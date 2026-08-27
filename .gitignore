@@ -1,0 +1,6 @@
+target/
+.idea/
+.bsp/
+.scala-build/
+*.iml
+.DS_Store
