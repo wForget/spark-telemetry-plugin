@@ -77,3 +77,31 @@ Metric Resource 刻意不包含 app/job/stage/task/executor/trace/span ID；它�
 Metrics pipeline 不创建或维护插件指标，也不再从 Spark listener / task callback 记录 job、stage、task、executor 指标。每个导出周期直接读取当前 JVM 的 Spark Dropwizard registry，因此 Spark 后续动态注册的指标也会被投递；非数值 Gauge 会被忽略，单个 Gauge 读取失败不会影响其余指标。Local 模式的 Driver 和 Executor 共享同一个 `MetricsSystem`，只由 Driver runtime 投递一次。
 
 Executor task span 是独立 trace，并通过 Spark ID 查询关联；公开 Spark Plugin API 无法安全地把 Driver span context 注入每个 task，因此不伪造 parent。为了让执行期间的日志获得真实 trace/span ID，task 开始时会创建 recording span，结束时才根据失败、慢任务和稳定采样规则决定是否送入有界导出队列；因此未保留普通任务的日志可能引用一个未导出的 trace，这是尾部保留策略的预期权衡。
+
+## 本地可观测性栈
+
+仓库根目录的 `docker-compose.yml` 会启动 Alloy、Mimir、Loki、Tempo、Pyroscope 和 Grafana。后端采用单进程和本地文件存储，适合开发和远程测试，不适合生产环境。
+
+```bash
+export GRAFANA_ADMIN_PASSWORD='replace-with-a-strong-password'
+docker compose up -d
+docker compose ps
+```
+
+所有服务均使用 `network_mode: host`，直接共享宿主机网络栈，不再使用 Docker 端口映射和 Compose 服务名解析。远程 Spark 应将 `spark.telemetry.endpoint` 配置为 `http://<compose-host>:4318`。部署到远程机器时应通过防火墙或安全组限制这些端口的访问来源。
+
+| Component | Port |
+|---|---|
+| Grafana | `3000` |
+| Alloy UI | `12345` |
+| Alloy OTLP gRPC / HTTP | `4317` / `4318` |
+| Mimir | `9009` |
+| Loki | `3100` |
+| Tempo | `3200` |
+| Pyroscope | `4040` |
+
+为避免 host 网络模式下的监听冲突，Tempo 的后端 OTLP gRPC / HTTP 端口调整为 `14317` / `14318`；Spark 仍只需连接 Alloy 的 `4317` / `4318`。Mimir、Loki、Tempo、Pyroscope 的内部 gRPC 端口分别为 `19095`、`19096`、`19097`、`19098`。
+
+Grafana 会自动 provision Mimir、Loki、Tempo 和 Pyroscope 数据源，并配置 metrics exemplar、trace 和 log 的跳转关系。当前插件尚未实现 profile 采集，所以 Pyroscope 默认不会出现 Spark profile 数据。
+
+停止容器但保留数据可执行 `docker compose down`；如需同时删除所有本地遥测数据，可执行 `docker compose down -v`。

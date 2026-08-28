@@ -1,0 +1,45 @@
+otelcol.receiver.otlp "spark" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    metrics = [otelcol.processor.batch.spark.input]
+    logs    = [otelcol.processor.batch.spark.input]
+    traces  = [otelcol.processor.batch.spark.input]
+  }
+}
+
+otelcol.processor.batch "spark" {
+  output {
+    metrics = [otelcol.exporter.prometheus.mimir.input]
+    logs    = [otelcol.exporter.otlphttp.loki.input]
+    traces  = [otelcol.exporter.otlphttp.tempo.input]
+  }
+}
+
+otelcol.exporter.prometheus "mimir" {
+  forward_to = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.remote_write "mimir" {
+  endpoint {
+    url = "http://127.0.0.1:9009/api/v1/push"
+  }
+}
+
+otelcol.exporter.otlphttp "loki" {
+  client {
+    endpoint = "http://127.0.0.1:3100/otlp"
+  }
+}
+
+otelcol.exporter.otlphttp "tempo" {
+  client {
+    endpoint = "http://127.0.0.1:14318"
+  }
+}

@@ -1,0 +1,11 @@
+# Local development only: single-process Pyroscope with host-safe internal ports.
+server:
+  http_listen_port: 4040
+  grpc_listen_port: 19098
+  log_level: info
+
+memberlist:
+  bind_port: 17948
+
+analytics:
+  reporting_enabled: false
