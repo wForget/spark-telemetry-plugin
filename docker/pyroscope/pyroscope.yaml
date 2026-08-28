@@ -4,6 +4,12 @@ server:
   grpc_listen_port: 19098
   log_level: info
 
+metastore:
+  address: localhost:19098
+
+query_backend:
+  address: localhost:19098
+
 memberlist:
   bind_port: 17948
 

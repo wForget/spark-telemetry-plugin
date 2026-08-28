@@ -11,6 +11,28 @@ docker compose up -d
 docker compose ps
 ```
 
+## 常用 Compose 命令
+
+```bash
+# 创建或更新并在后台启动所有服务
+docker compose up -d
+
+# 查看服务状态
+docker compose ps
+
+# 持续查看所有服务日志
+docker compose logs -f
+
+# 只重启 Grafana
+docker compose restart grafana
+
+# 停止并删除容器，保留数据卷
+docker compose down
+
+# 停止并删除容器和数据卷
+docker compose down -v
+```
+
 所有服务均使用 `network_mode: host`，直接共享宿主机网络栈，不再使用 Docker 端口映射和 Compose 服务名解析。远程 Spark 应将 `spark.telemetry.endpoint` 配置为 `http://<compose-host>:4317`。部署到远程机器时应通过防火墙或安全组限制这些端口的访问来源。
 
 | Component | Port |
@@ -26,5 +48,3 @@ docker compose ps
 为避免 host 网络模式下的监听冲突，Tempo 的后端 OTLP gRPC / HTTP 端口调整为 `14317` / `14318`；Spark 只连接 Alloy 的 OTLP gRPC `4317`。Mimir、Loki、Tempo、Pyroscope 的内部 gRPC 端口分别为 `19095`、`19096`、`19097`、`19098`。
 
 Grafana 会自动 provision Mimir、Loki、Tempo 和 Pyroscope 数据源，并配置 metrics exemplar、trace 和 log 的跳转关系。当前插件尚未实现 profile 采集，所以 Pyroscope 默认不会出现 Spark profile 数据。
-
-停止容器但保留数据可执行 `docker compose down`；如需同时删除所有本地遥测数据，可执行 `docker compose down -v`。
