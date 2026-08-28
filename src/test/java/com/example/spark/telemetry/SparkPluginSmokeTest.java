@@ -18,8 +18,7 @@ class SparkPluginSmokeTest {
                 .set("spark.plugins", UnifiedTelemetryPlugin.class.getName())
                 .set("spark.telemetry.metrics.enabled", "false")
                 .set("spark.telemetry.logs.enabled", "false")
-                .set("spark.telemetry.traces.enabled", "false")
-                .set("spark.telemetry.profiles.enabled", "false");
+                .set("spark.telemetry.traces.enabled", "false");
         JavaSparkContext context = new JavaSparkContext(conf);
         try {
             long count = context.parallelize(Arrays.asList(1, 2, 3, 4), 2).count();

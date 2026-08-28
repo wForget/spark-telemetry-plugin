@@ -79,14 +79,6 @@ public final class ResourceIdentity {
         return Resource.create(attributes.build());
     }
 
-    public Attributes profileLabels() {
-        AttributesBuilder attributes = stableAttributes();
-        attributes.put("spark.app.id", applicationId);
-        attributes.put("spark.role", role);
-        attributes.put("spark.executor.id", executorId);
-        return attributes.build();
-    }
-
     public String serviceName() { return serviceName; }
     public String applicationId() { return applicationId; }
     public String role() { return role; }

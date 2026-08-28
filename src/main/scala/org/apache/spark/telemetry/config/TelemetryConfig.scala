@@ -23,20 +23,13 @@ final class TelemetryConfig private (
   def metricsEnabled(): Boolean = enabled() && conf.get(METRICS_ENABLED)
   def logsEnabled(): Boolean = enabled() && conf.get(LOGS_ENABLED)
   def tracesEnabled(): Boolean = enabled() && conf.get(TRACES_ENABLED)
-  def profilesEnabled(): Boolean = enabled() && conf.get(PROFILES_ENABLED)
   def logCaptureEnabled(): Boolean = logsEnabled() && conf.get(LOG_CAPTURE)
   def endpoint(): String = conf.get(ENDPOINT)
-  def profileEndpoint(): String = conf.get(PROFILE_ENDPOINT)
   def minimumLogLevel(): TelemetryLogLevel = TelemetryLogLevel.valueOf(conf.get(LOG_MINIMUM_LEVEL))
   def taskSampleRate(): Double = conf.get(TASK_SAMPLE_RATE)
   def slowTaskThreshold(): Duration = Duration.ofMillis(conf.get(SLOW_TASK_THRESHOLD))
-  def profileSampleRate(): Int = conf.get(PROFILE_SAMPLE_RATE)
-  def profileWindow(): Duration = Duration.ofMillis(conf.get(PROFILE_WINDOW))
-  def profileTransport(): String = conf.get(PROFILE_TRANSPORT)
-  def metricsQueueCapacity(): Int = conf.get(METRICS_QUEUE_CAPACITY)
   def logsQueueCapacity(): Int = conf.get(LOGS_QUEUE_CAPACITY)
   def tracesQueueCapacity(): Int = conf.get(TRACES_QUEUE_CAPACITY)
-  def profilesQueueCapacity(): Int = conf.get(PROFILES_QUEUE_CAPACITY)
   def batchMaxSize(): Int = conf.get(BATCH_MAX_SIZE)
   def batchTimeout(): Duration = Duration.ofMillis(conf.get(BATCH_TIMEOUT))
   def exportTimeout(): Duration = Duration.ofMillis(conf.get(EXPORT_TIMEOUT))
@@ -81,14 +74,10 @@ object TelemetryConfig {
     boolean("strict", "Fail Spark initialization when telemetry configuration is invalid", default = false)
   val ENDPOINT: ConfigEntry[String] =
     text("endpoint", "Alloy OTLP HTTP base endpoint", "http://127.0.0.1:4318")
-  val PROFILE_ENDPOINT: ConfigEntry[String] =
-    text("profile.endpoint", "Alloy Pyroscope receive endpoint", "http://127.0.0.1:9999")
 
   val METRICS_ENABLED: ConfigEntry[Boolean] = signalEnabled("metrics")
   val LOGS_ENABLED: ConfigEntry[Boolean] = signalEnabled("logs")
   val TRACES_ENABLED: ConfigEntry[Boolean] = signalEnabled("traces")
-  val PROFILES_ENABLED: ConfigEntry[Boolean] =
-    boolean("profiles.enabled", "Enable profile export", default = false)
 
   val LOG_MINIMUM_LEVEL: ConfigEntry[String] =
     define("logs.minimum-level", "Minimum captured log level") { builder =>
@@ -107,26 +96,11 @@ object TelemetryConfig {
     }
   val SLOW_TASK_THRESHOLD: ConfigEntry[Long] =
     time("traces.slow-task-threshold", "Threshold above which a task trace is retained", "30s")
-  val PROFILE_SAMPLE_RATE: ConfigEntry[Int] =
-    positiveInt("profiles.sample-rate", "Profiler sampling frequency", 19)
-  val PROFILE_WINDOW: ConfigEntry[Long] =
-    time("profiles.window", "Duration of one complete profile window", "10s")
-  val PROFILE_TRANSPORT: ConfigEntry[String] =
-    define("profiles.transport", "Profile transport implementation") { builder =>
-      builder.stringConf
-        .transform(_.trim.toLowerCase(Locale.ROOT))
-        .checkValues(Set("pyroscope"))
-        .createWithDefault("pyroscope")
-    }
 
-  val METRICS_QUEUE_CAPACITY: ConfigEntry[Int] =
-    positiveInt("queue.metrics.capacity", "Metrics configuration capacity guard", 1000)
   val LOGS_QUEUE_CAPACITY: ConfigEntry[Int] =
     positiveInt("queue.logs.capacity", "OTel log batch queue capacity", 10000)
   val TRACES_QUEUE_CAPACITY: ConfigEntry[Int] =
     positiveInt("queue.traces.capacity", "OTel span batch queue capacity", 5000)
-  val PROFILES_QUEUE_CAPACITY: ConfigEntry[Int] =
-    positiveInt("queue.profiles.capacity", "Complete profile window queue capacity", 10)
   val BATCH_MAX_SIZE: ConfigEntry[Int] =
     positiveInt("batch.max-size", "Maximum export batch size", 512)
   val BATCH_TIMEOUT: ConfigEntry[Long] =
@@ -151,12 +125,11 @@ object TelemetryConfig {
     internalText("internal.app-id", "Driver-validated Spark application id", "unknown")
 
   private val UserEntries: Seq[ConfigEntry[_]] = Seq(
-    ENABLED, STRICT, ENDPOINT, PROFILE_ENDPOINT,
-    METRICS_ENABLED, LOGS_ENABLED, TRACES_ENABLED, PROFILES_ENABLED,
+    ENABLED, STRICT, ENDPOINT,
+    METRICS_ENABLED, LOGS_ENABLED, TRACES_ENABLED,
     LOG_MINIMUM_LEVEL, LOG_CAPTURE, TASK_SAMPLE_RATE, SLOW_TASK_THRESHOLD,
-    PROFILE_SAMPLE_RATE, PROFILE_WINDOW, PROFILE_TRANSPORT,
-    METRICS_QUEUE_CAPACITY, LOGS_QUEUE_CAPACITY, TRACES_QUEUE_CAPACITY,
-    PROFILES_QUEUE_CAPACITY, BATCH_MAX_SIZE, BATCH_TIMEOUT, EXPORT_TIMEOUT,
+    LOGS_QUEUE_CAPACITY, TRACES_QUEUE_CAPACITY,
+    BATCH_MAX_SIZE, BATCH_TIMEOUT, EXPORT_TIMEOUT,
     SHUTDOWN_FLUSH_TIMEOUT, SERVICE_NAME, SERVICE_NAMESPACE,
     DEPLOYMENT_ENVIRONMENT, CLUSTER)
   private val AllEntries: Seq[ConfigEntry[_]] = UserEntries ++ Seq(INTERNAL_APP_NAME, INTERNAL_APP_ID)
@@ -300,18 +273,13 @@ object TelemetryConfig {
         return disabled()
     }
 
-    validateSignal(conf, strict, METRICS_ENABLED, Seq(METRICS_QUEUE_CAPACITY))
     validateSignal(conf, strict, LOGS_ENABLED,
       Seq(LOG_CAPTURE, LOGS_QUEUE_CAPACITY, LOG_MINIMUM_LEVEL))
     validateSignal(conf, strict, TRACES_ENABLED,
       Seq(TRACES_QUEUE_CAPACITY, TASK_SAMPLE_RATE, SLOW_TASK_THRESHOLD))
-    validateSignal(conf, strict, PROFILES_ENABLED,
-      Seq(PROFILES_QUEUE_CAPACITY, PROFILE_SAMPLE_RATE, PROFILE_WINDOW, PROFILE_TRANSPORT))
 
     validateEndpoint(conf, strict, "OTLP endpoint is not an http(s) URI",
       Seq(METRICS_ENABLED, LOGS_ENABLED, TRACES_ENABLED), ENDPOINT)
-    validateEndpoint(conf, strict, "profile endpoint is not an http(s) URI",
-      Seq(PROFILES_ENABLED), PROFILE_ENDPOINT)
     freeze(conf)
   }
 

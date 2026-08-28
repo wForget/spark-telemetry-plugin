@@ -205,6 +205,13 @@
               </transformers>
               <filters>
                 <filter>
+                  <artifact>io.opentelemetry:opentelemetry-exporter-otlp-common</artifact>
+                  <excludes>
+                    <exclude>io/opentelemetry/proto/profiles/**</exclude>
+                    <exclude>io/opentelemetry/proto/collector/profiles/**</exclude>
+                  </excludes>
+                </filter>
+                <filter>
                   <artifact>*:*</artifact>
                   <excludes>
                     <exclude>META-INF/*.SF</exclude>

@@ -66,20 +66,23 @@ class TelemetryConfigTest {
     }
 
     @Test
-    void endpointCredentialsAndQueryAreNeverPropagated() {
-        Map<String, String> values = new HashMap<String, String>();
-        values.put(TelemetryConfig.ENDPOINT().key(), "http://user:password@alloy:4318");
-        values.put(TelemetryConfig.PROFILE_ENDPOINT().key(), "https://alloy:9999?token=secret");
-        values.put(TelemetryConfig.PROFILES_ENABLED().key(), "true");
-        TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
+    void unsafeEndpointPartsAreNeverPropagated() {
+        String[] unsafeEndpoints = {
+                "http://user:secret@alloy:4318",
+                "https://alloy:4318?token=secret",
+                "https://alloy:4318/v1/traces#secret"
+        };
+        for (String endpoint : unsafeEndpoints) {
+            Map<String, String> values = new HashMap<String, String>();
+            values.put(TelemetryConfig.ENDPOINT().key(), endpoint);
+            TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
 
-        assertFalse(config.metricsEnabled());
-        assertFalse(config.logsEnabled());
-        assertFalse(config.tracesEnabled());
-        assertFalse(config.profilesEnabled());
-        assertEquals("http://127.0.0.1:4318", config.endpoint());
-        assertEquals("http://127.0.0.1:9999", config.profileEndpoint());
-        assertFalse(config.toExecutorConfiguration().toString().contains("secret"));
+            assertFalse(config.metricsEnabled());
+            assertFalse(config.logsEnabled());
+            assertFalse(config.tracesEnabled());
+            assertEquals("http://127.0.0.1:4318", config.endpoint());
+            assertFalse(config.toExecutorConfiguration().toString().contains("secret"));
+        }
     }
 
     @Test
@@ -115,13 +118,13 @@ class TelemetryConfigTest {
     void driverConfigurationRoundTripsCanonicalTypedValues() {
         SparkConf spark = new SparkConf(false)
                 .set(TelemetryConfig.LOG_MINIMUM_LEVEL().key(), "warn")
-                .set(TelemetryConfig.PROFILE_WINDOW().key(), "2500ms");
+                .set(TelemetryConfig.SHUTDOWN_FLUSH_TIMEOUT().key(), "2500ms");
 
         TelemetryConfig driver = TelemetryConfig.from(spark, new HashMap<String, String>());
         TelemetryConfig executor = TelemetryConfig.fromDriver(driver.toExecutorConfiguration());
 
         assertEquals(TelemetryLogLevel.WARN, executor.minimumLogLevel());
-        assertEquals(Duration.ofMillis(2500), executor.profileWindow());
+        assertEquals(Duration.ofMillis(2500), executor.shutdownFlushTimeout());
         assertEquals(driver.toExecutorConfiguration(), executor.toExecutorConfiguration());
     }
 

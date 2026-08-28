@@ -33,11 +33,10 @@ final class CountingExporters {
     private abstract static class CompletionCounter {
         final PluginSelfMetrics metrics;
         CompletionCounter(PluginSelfMetrics metrics) { this.metrics = metrics; }
-        CompletableResultCode count(CompletableResultCode result, final int size, final long started) {
+        CompletableResultCode count(CompletableResultCode result, final int size) {
             result.whenComplete(new Runnable() {
                 @Override public void run() {
-                    long duration = Math.max(0L, System.nanoTime() - started);
-                    if (result.isSuccess()) metrics.recordSuccessfulBatch(size, duration);
+                    if (result.isSuccess()) metrics.recordExported(size);
                     else {
                         metrics.recordFailure();
                         metrics.recordDropped(size);
@@ -52,7 +51,7 @@ final class CountingExporters {
         private final SpanExporter delegate;
         CountingSpanExporter(SpanExporter delegate, PluginSelfMetrics metrics) { super(metrics); this.delegate = delegate; }
         @Override public CompletableResultCode export(Collection<SpanData> spans) {
-            return count(delegate.export(spans), spans.size(), System.nanoTime());
+            return count(delegate.export(spans), spans.size());
         }
         @Override public CompletableResultCode flush() { return delegate.flush(); }
         @Override public CompletableResultCode shutdown() { return delegate.shutdown(); }
@@ -62,7 +61,7 @@ final class CountingExporters {
         private final LogRecordExporter delegate;
         CountingLogExporter(LogRecordExporter delegate, PluginSelfMetrics metrics) { super(metrics); this.delegate = delegate; }
         @Override public CompletableResultCode export(Collection<LogRecordData> logs) {
-            return count(delegate.export(logs), logs.size(), System.nanoTime());
+            return count(delegate.export(logs), logs.size());
         }
         @Override public CompletableResultCode flush() { return delegate.flush(); }
         @Override public CompletableResultCode shutdown() { return delegate.shutdown(); }
@@ -72,7 +71,7 @@ final class CountingExporters {
         private final MetricExporter delegate;
         CountingMetricExporter(MetricExporter delegate, PluginSelfMetrics metrics) { super(metrics); this.delegate = delegate; }
         @Override public CompletableResultCode export(Collection<MetricData> metrics) {
-            return count(delegate.export(metrics), metrics.size(), System.nanoTime());
+            return count(delegate.export(metrics), metrics.size());
         }
         @Override public AggregationTemporality getAggregationTemporality(InstrumentType type) {
             return delegate.getAggregationTemporality(type);

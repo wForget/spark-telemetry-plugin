@@ -1,7 +1,5 @@
 package com.example.spark.telemetry.runtime;
 
-import com.example.spark.telemetry.profile.ProfileBatch;
-import com.example.spark.telemetry.profile.ProfilePipeline;
 import com.example.spark.telemetry.reliability.PluginSelfMetrics;
 import io.opentelemetry.api.logs.Logger;
 import io.opentelemetry.api.metrics.Meter;
@@ -40,11 +38,9 @@ public final class TelemetryRuntime implements AutoCloseable {
     private final MetricPipeline metrics;
     private final TracePipeline traces;
     private final LogPipeline logs;
-    private final ProfilePipeline profiles;
     private final PluginSelfMetrics metricSelfMetrics;
     private final PluginSelfMetrics logSelfMetrics;
     private final PluginSelfMetrics traceSelfMetrics;
-    private final PluginSelfMetrics profileSelfMetrics;
     private final AtomicReference<State> state = new AtomicReference<State>(State.RUNNING);
 
     private TelemetryRuntime(
@@ -55,11 +51,9 @@ public final class TelemetryRuntime implements AutoCloseable {
             MetricPipeline metrics,
             TracePipeline traces,
             LogPipeline logs,
-            ProfilePipeline profiles,
             PluginSelfMetrics metricSelfMetrics,
             PluginSelfMetrics logSelfMetrics,
-            PluginSelfMetrics traceSelfMetrics,
-            PluginSelfMetrics profileSelfMetrics) {
+            PluginSelfMetrics traceSelfMetrics) {
         this.config = config;
         this.meterProvider = meterProvider;
         this.tracerProvider = tracerProvider;
@@ -67,25 +61,21 @@ public final class TelemetryRuntime implements AutoCloseable {
         this.metrics = metrics;
         this.traces = traces;
         this.logs = logs;
-        this.profiles = profiles;
         this.metricSelfMetrics = metricSelfMetrics;
         this.logSelfMetrics = logSelfMetrics;
         this.traceSelfMetrics = traceSelfMetrics;
-        this.profileSelfMetrics = profileSelfMetrics;
     }
 
     public static TelemetryRuntime create(TelemetryConfig config, ResourceIdentity identity) {
         PluginSelfMetrics metricStats = new PluginSelfMetrics();
         PluginSelfMetrics logStats = new PluginSelfMetrics();
         PluginSelfMetrics traceStats = new PluginSelfMetrics();
-        PluginSelfMetrics profileStats = new PluginSelfMetrics();
         SdkMeterProvider meterProvider = buildMeterProvider(config, identity, metricStats);
         SdkTracerProvider tracerProvider = buildTracerProvider(config, identity, traceStats);
         SdkLoggerProvider loggerProvider = buildLoggerProvider(config, identity, logStats);
         Meter meter = meterProvider.get(INSTRUMENTATION_SCOPE);
         Tracer tracer = tracerProvider.get(INSTRUMENTATION_SCOPE);
         Logger logger = loggerProvider.get(INSTRUMENTATION_SCOPE);
-        ProfilePipeline profiles = config.profilesEnabled() ? new ProfilePipeline(config, profileStats) : null;
         return new TelemetryRuntime(
                 config,
                 meterProvider,
@@ -94,11 +84,9 @@ public final class TelemetryRuntime implements AutoCloseable {
                 new MetricPipeline(meter),
                 new TracePipeline(tracer),
                 new LogPipeline(logger, config.minimumLogLevel(), logStats),
-                profiles,
                 metricStats,
                 logStats,
-                traceStats,
-                profileStats);
+                traceStats);
     }
 
     public LogPipeline logs() { return logs; }
@@ -106,11 +94,7 @@ public final class TelemetryRuntime implements AutoCloseable {
         if ("metrics".equals(signal)) return metricSelfMetrics;
         if ("logs".equals(signal)) return logSelfMetrics;
         if ("traces".equals(signal)) return traceSelfMetrics;
-        if ("profiles".equals(signal)) return profileSelfMetrics;
         throw new IllegalArgumentException("unknown signal: " + signal);
-    }
-    public boolean offerProfile(ProfileBatch batch) {
-        return profiles != null && isRunning() && profiles.offer(batch);
     }
     public boolean isRunning() { return state.get() == State.RUNNING; }
 
@@ -214,7 +198,6 @@ public final class TelemetryRuntime implements AutoCloseable {
         if (!state.compareAndSet(State.RUNNING, State.CLOSING)) return;
         final long deadline = System.nanoTime() + Math.max(0L, timeout.toNanos());
         try {
-            if (profiles != null) profiles.close(Duration.ofNanos(Math.max(0L, deadline - System.nanoTime())));
             traces.close(System.currentTimeMillis());
             Thread providerShutdown = new Thread(new Runnable() {
                 @Override public void run() {

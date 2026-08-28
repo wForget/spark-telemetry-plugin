@@ -8,26 +8,19 @@ import org.junit.jupiter.api.Test;
 class PluginSelfMetricsTest {
 
     @Test
-    void recordsCountersAndReadsLiveQueueGauge() {
-        BoundedSignalQueue<Integer> queue = new BoundedSignalQueue<Integer>(3);
+    void recordsCounters() {
         PluginSelfMetrics metrics = new PluginSelfMetrics();
-        metrics.setQueueGauge(PluginSelfMetrics.queueGauge(queue));
-        queue.offer(1);
-        metrics.recordReceived(2);
+        metrics.recordReceived();
+        metrics.recordReceived();
         metrics.recordDropped();
-        metrics.recordRetry();
-        metrics.recordSuccessfulBatch(2, 50);
+        metrics.recordExported(2);
+        metrics.recordFailure();
 
         PluginSelfMetrics.Snapshot snapshot = metrics.snapshot();
         assertEquals(2L, snapshot.eventsReceived());
         assertEquals(2L, snapshot.eventsExported());
         assertEquals(1L, snapshot.eventsDropped());
-        assertEquals(1L, snapshot.exportRetries());
-        assertEquals(1L, snapshot.batchesExported());
-        assertEquals(50L, snapshot.exportDurationNanos());
-        assertEquals(2L, snapshot.lastBatchSize());
-        assertEquals(1, snapshot.queueSize());
-        assertEquals(3, snapshot.queueCapacity());
+        assertEquals(1L, snapshot.exportFailures());
     }
 
     @Test

@@ -7,7 +7,7 @@ import com.example.spark.telemetry.runtime.TelemetryRuntime;
 
 /** Exposes the same bounded self-observability state through Spark's plugin metric source. */
 public final class SparkSelfMetrics {
-    private static final String[] SIGNALS = {"metrics", "logs", "traces", "profiles"};
+    private static final String[] SIGNALS = {"metrics", "logs", "traces"};
 
     private SparkSelfMetrics() {
     }
@@ -32,12 +32,6 @@ public final class SparkSelfMetrics {
         });
         registry.register(prefix + "export_failures_total", new Gauge<Long>() {
             @Override public Long getValue() { return metrics.snapshot().exportFailures(); }
-        });
-        registry.register(prefix + "queue_size", new Gauge<Integer>() {
-            @Override public Integer getValue() { return metrics.snapshot().queueSize(); }
-        });
-        registry.register(prefix + "queue_capacity", new Gauge<Integer>() {
-            @Override public Integer getValue() { return metrics.snapshot().queueCapacity(); }
         });
     }
 }
