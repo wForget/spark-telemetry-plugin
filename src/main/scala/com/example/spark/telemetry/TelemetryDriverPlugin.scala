@@ -1,12 +1,12 @@
 package com.example.spark.telemetry
 
-import java.util.{Map => JMap}
+import java.util.{Collections, Map => JMap}
 
-import com.example.spark.telemetry.config.TelemetryConfig
 import com.example.spark.telemetry.instrumentation.{Log4j2TelemetryBridge, SparkSelfMetrics}
 import com.example.spark.telemetry.runtime.{DeferredTelemetrySink, ResourceIdentity, TelemetryRuntime}
 import org.apache.spark.SparkContext
 import org.apache.spark.api.plugin.{DriverPlugin, PluginContext}
+import org.apache.spark.telemetry.config.TelemetryConfig
 import scala.util.control.NonFatal
 
 final class TelemetryDriverPlugin extends DriverPlugin {
@@ -19,8 +19,8 @@ final class TelemetryDriverPlugin extends DriverPlugin {
   override def init(sc: SparkContext, context: PluginContext): JMap[String, String] = {
     var strictRequested = false
     try {
-      strictRequested = sc.getConf.getBoolean(TelemetryConfig.STRICT, false)
-      val parsed = TelemetryConfig.from(SparkConfigAdapter.toJava(sc.getConf))
+      strictRequested = TelemetryConfig.strictRequested(sc.getConf, false)
+      val parsed = TelemetryConfig.from(sc.getConf)
         .withApplication(sc.appName, "unknown")
       config = parsed
       applicationStartMillis = sc.startTime
@@ -34,8 +34,8 @@ final class TelemetryDriverPlugin extends DriverPlugin {
         config.toExecutorConfiguration()
       case failure: LinkageError =>
         if (strictRequested) throw failure
-        config = TelemetryConfig.disabled()
-        config.toExecutorConfiguration()
+        config = null
+        Collections.singletonMap("spark.telemetry.enabled", "false")
     }
   }
 

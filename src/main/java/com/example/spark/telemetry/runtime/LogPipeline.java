@@ -1,6 +1,5 @@
 package com.example.spark.telemetry.runtime;
 
-import com.example.spark.telemetry.config.TelemetryConfig;
 import com.example.spark.telemetry.reliability.PluginSelfMetrics;
 import io.opentelemetry.api.logs.LogRecordBuilder;
 import io.opentelemetry.api.logs.Logger;
@@ -9,14 +8,15 @@ import io.opentelemetry.api.logs.Severity;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.apache.spark.telemetry.config.TelemetryLogLevel;
 
 /** Converts immutable Log4j snapshots to OpenTelemetry log records. */
 public final class LogPipeline {
     private final Logger logger;
-    private final TelemetryConfig.LogLevel minimumLevel;
+    private final TelemetryLogLevel minimumLevel;
     private final PluginSelfMetrics selfMetrics;
 
-    LogPipeline(Logger logger, TelemetryConfig.LogLevel minimumLevel, PluginSelfMetrics selfMetrics) {
+    LogPipeline(Logger logger, TelemetryLogLevel minimumLevel, PluginSelfMetrics selfMetrics) {
         this.logger = logger;
         this.minimumLevel = minimumLevel;
         this.selfMetrics = selfMetrics;
@@ -24,7 +24,7 @@ public final class LogPipeline {
 
     public void emit(
             long epochMillis,
-            TelemetryConfig.LogLevel level,
+            TelemetryLogLevel level,
             String loggerName,
             String message,
             String exceptionType,
@@ -61,7 +61,7 @@ public final class LogPipeline {
                 || loggerName.startsWith("io.opentelemetry"));
     }
 
-    private static Severity severity(TelemetryConfig.LogLevel level) {
+    private static Severity severity(TelemetryLogLevel level) {
         switch (level) {
             case TRACE: return Severity.TRACE;
             case DEBUG: return Severity.DEBUG;

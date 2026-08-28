@@ -1,6 +1,6 @@
 package com.example.spark.telemetry.runtime;
 
-import com.example.spark.telemetry.config.TelemetryConfig;
+import org.apache.spark.telemetry.config.TelemetryConfig;
 import io.opentelemetry.sdk.resources.Resource;
 import org.junit.jupiter.api.Test;
 

@@ -1,6 +1,5 @@
 package com.example.spark.telemetry.runtime;
 
-import com.example.spark.telemetry.config.TelemetryConfig;
 import com.example.spark.telemetry.profile.ProfileBatch;
 import com.example.spark.telemetry.profile.ProfilePipeline;
 import com.example.spark.telemetry.reliability.PluginSelfMetrics;
@@ -26,6 +25,7 @@ import io.opentelemetry.sdk.trace.export.SpanExporter;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.spark.telemetry.config.TelemetryConfig;
 
 /**
  * One Driver or Executor process-local runtime. Providers are deliberately not installed globally.

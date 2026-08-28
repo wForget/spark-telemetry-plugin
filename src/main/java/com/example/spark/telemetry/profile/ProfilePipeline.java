@@ -1,6 +1,5 @@
 package com.example.spark.telemetry.profile;
 
-import com.example.spark.telemetry.config.TelemetryConfig;
 import com.example.spark.telemetry.reliability.BatchProcessor;
 import com.example.spark.telemetry.reliability.BoundedSignalQueue;
 import com.example.spark.telemetry.reliability.CircuitBreaker;
@@ -10,6 +9,7 @@ import com.example.spark.telemetry.reliability.RetryPolicy;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.apache.spark.telemetry.config.TelemetryConfig;
 
 /** One queue item per complete profile window; overload skips the incoming window. */
 public final class ProfilePipeline implements AutoCloseable, ProfileCollector.Sink {

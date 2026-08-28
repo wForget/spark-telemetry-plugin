@@ -2,13 +2,13 @@ package com.example.spark.telemetry
 
 import java.util.{HashMap => JHashMap, Map => JMap}
 
-import com.example.spark.telemetry.config.TelemetryConfig
 import com.example.spark.telemetry.instrumentation.{Log4j2TelemetryBridge, SparkSelfMetrics}
 import com.example.spark.telemetry.runtime.{ResourceIdentity, TaskSampler, TaskSpanHandle, TelemetryRuntime}
 import org.apache.logging.log4j.ThreadContext
 import org.apache.spark.TaskContext
 import org.apache.spark.api.plugin.{ExecutorPlugin, PluginContext}
 import org.apache.spark.TaskFailedReason
+import org.apache.spark.telemetry.config.TelemetryConfig
 import scala.util.control.NonFatal
 
 final class TelemetryExecutorPlugin extends ExecutorPlugin {
@@ -18,11 +18,11 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
   @volatile private var logBridge: Log4j2TelemetryBridge = _
 
   override def init(context: PluginContext, extraConf: JMap[String, String]): Unit = {
-    var strictRequested = extraConf != null &&
-      java.lang.Boolean.parseBoolean(extraConf.get(TelemetryConfig.STRICT))
+    var strictRequested = false
     try {
       val conf = context.conf()
-      strictRequested = conf.getBoolean(TelemetryConfig.STRICT, strictRequested)
+      strictRequested = TelemetryConfig.strictRequested(conf, false)
+      strictRequested = TelemetryConfig.strictRequested(extraConf, strictRequested)
       val parsed = TelemetryConfig.fromDriver(extraConf).withApplication(
         conf.get("spark.app.name", "spark"),
         conf.get("spark.app.id", "unknown"))
@@ -45,7 +45,7 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
         config = TelemetryConfig.disabled()
       case failure: LinkageError =>
         if (strictRequested) throw failure
-        config = TelemetryConfig.disabled()
+        config = null
     }
   }
 

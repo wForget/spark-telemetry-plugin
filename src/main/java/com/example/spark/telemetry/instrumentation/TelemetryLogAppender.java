@@ -1,6 +1,5 @@
 package com.example.spark.telemetry.instrumentation;
 
-import com.example.spark.telemetry.config.TelemetryConfig;
 import com.example.spark.telemetry.runtime.LogPipeline;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.LogEvent;
@@ -11,6 +10,7 @@ import java.io.PrintWriter;
 import java.io.Writer;
 import java.util.Collections;
 import java.util.Map;
+import org.apache.spark.telemetry.config.TelemetryLogLevel;
 
 final class TelemetryLogAppender extends AbstractAppender {
     private final LogPipeline pipeline;
@@ -51,14 +51,14 @@ final class TelemetryLogAppender extends AbstractAppender {
                 : event.getContextData().toMap();
     }
 
-    private static TelemetryConfig.LogLevel level(Level level) {
-        if (level == null) return TelemetryConfig.LogLevel.INFO;
-        if (level.isMoreSpecificThan(Level.FATAL)) return TelemetryConfig.LogLevel.FATAL;
-        if (level.isMoreSpecificThan(Level.ERROR)) return TelemetryConfig.LogLevel.ERROR;
-        if (level.isMoreSpecificThan(Level.WARN)) return TelemetryConfig.LogLevel.WARN;
-        if (level.isMoreSpecificThan(Level.INFO)) return TelemetryConfig.LogLevel.INFO;
-        if (level.isMoreSpecificThan(Level.DEBUG)) return TelemetryConfig.LogLevel.DEBUG;
-        return TelemetryConfig.LogLevel.TRACE;
+    private static TelemetryLogLevel level(Level level) {
+        if (level == null) return TelemetryLogLevel.INFO;
+        if (level.isMoreSpecificThan(Level.FATAL)) return TelemetryLogLevel.FATAL;
+        if (level.isMoreSpecificThan(Level.ERROR)) return TelemetryLogLevel.ERROR;
+        if (level.isMoreSpecificThan(Level.WARN)) return TelemetryLogLevel.WARN;
+        if (level.isMoreSpecificThan(Level.INFO)) return TelemetryLogLevel.INFO;
+        if (level.isMoreSpecificThan(Level.DEBUG)) return TelemetryLogLevel.DEBUG;
+        return TelemetryLogLevel.TRACE;
     }
 
     static String stackTrace(Throwable thrown) {

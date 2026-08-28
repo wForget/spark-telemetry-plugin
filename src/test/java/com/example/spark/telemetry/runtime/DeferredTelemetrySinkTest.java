@@ -1,6 +1,6 @@
 package com.example.spark.telemetry.runtime;
 
-import com.example.spark.telemetry.config.TelemetryConfig;
+import org.apache.spark.telemetry.config.TelemetryConfig;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -12,9 +12,9 @@ class DeferredTelemetrySinkTest {
     @Test
     void drainsBootstrapEventsAndClosesIdempotently() {
         HashMap<String, String> values = new HashMap<String, String>();
-        values.put(TelemetryConfig.METRICS_ENABLED, "false");
-        values.put(TelemetryConfig.LOGS_ENABLED, "false");
-        values.put(TelemetryConfig.TRACES_ENABLED, "false");
+        values.put(TelemetryConfig.METRICS_ENABLED().key(), "false");
+        values.put(TelemetryConfig.LOGS_ENABLED().key(), "false");
+        values.put(TelemetryConfig.TRACES_ENABLED().key(), "false");
         TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>())
                 .withApplication("test", "app-1");
         TelemetryRuntime runtime = TelemetryRuntime.create(config, ResourceIdentity.driver(config, "app-1"));

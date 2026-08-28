@@ -1,6 +1,9 @@
 package com.example.spark.telemetry.config;
 
 import org.junit.jupiter.api.Test;
+import org.apache.spark.telemetry.config.TelemetryConfig;
+import org.apache.spark.telemetry.config.TelemetryLogLevel;
+import org.apache.spark.SparkConf;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -15,12 +18,12 @@ class TelemetryConfigTest {
         environment.put("SPARK_TELEMETRY_TRACES_TASK_SAMPLE_RATE", "0.25");
         environment.put("SPARK_TELEMETRY_LOGS_MINIMUM_LEVEL", "WARN");
         Map<String, String> spark = new HashMap<String, String>();
-        spark.put(TelemetryConfig.TASK_SAMPLE_RATE, "0.5");
+        spark.put(TelemetryConfig.TASK_SAMPLE_RATE().key(), "0.5");
 
         TelemetryConfig config = TelemetryConfig.from(spark, environment);
 
         assertEquals(0.5d, config.taskSampleRate());
-        assertEquals(TelemetryConfig.LogLevel.WARN, config.minimumLogLevel());
+        assertEquals(TelemetryLogLevel.WARN, config.minimumLogLevel());
         assertEquals(Duration.ofSeconds(30), config.slowTaskThreshold());
     }
 
@@ -28,24 +31,24 @@ class TelemetryConfigTest {
     void driverMapIsAllowlistedAndImmutable() {
         Map<String, String> spark = new HashMap<String, String>();
         spark.put("spark.telemetry.authorization", "secret");
-        spark.put(TelemetryConfig.ENDPOINT, "http://alloy:4318/");
+        spark.put(TelemetryConfig.ENDPOINT().key(), "http://alloy:4318/");
         TelemetryConfig config = TelemetryConfig.from(spark, new HashMap<String, String>());
 
         assertFalse(config.toExecutorConfiguration().containsKey("spark.telemetry.authorization"));
         assertEquals("http://alloy:4318/v1/traces", config.otlpSignalEndpoint("traces"));
         assertThrows(UnsupportedOperationException.class,
-                () -> config.toExecutorConfiguration().put(TelemetryConfig.ENABLED, "false"));
+                () -> config.toExecutorConfiguration().put(TelemetryConfig.ENABLED().key(), "false"));
     }
 
     @Test
     void invalidConfigurationFailsOpenUnlessStrict() {
         Map<String, String> failOpen = new HashMap<String, String>();
-        failOpen.put(TelemetryConfig.BATCH_MAX_SIZE, "0");
+        failOpen.put(TelemetryConfig.BATCH_MAX_SIZE().key(), "0");
         assertFalse(TelemetryConfig.from(failOpen, new HashMap<String, String>()).enabled());
 
         Map<String, String> strict = new HashMap<String, String>();
-        strict.put(TelemetryConfig.STRICT, "true");
-        strict.put(TelemetryConfig.TASK_SAMPLE_RATE, "NaN");
+        strict.put(TelemetryConfig.STRICT().key(), "true");
+        strict.put(TelemetryConfig.TASK_SAMPLE_RATE().key(), "NaN");
         assertThrows(IllegalArgumentException.class,
                 () -> TelemetryConfig.from(strict, new HashMap<String, String>()));
     }
@@ -53,7 +56,7 @@ class TelemetryConfigTest {
     @Test
     void invalidSignalOnlyDisablesThatSignal() {
         Map<String, String> values = new HashMap<String, String>();
-        values.put(TelemetryConfig.TASK_SAMPLE_RATE, "2.0");
+        values.put(TelemetryConfig.TASK_SAMPLE_RATE().key(), "2.0");
         TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
 
         assertTrue(config.enabled());
@@ -65,9 +68,9 @@ class TelemetryConfigTest {
     @Test
     void endpointCredentialsAndQueryAreNeverPropagated() {
         Map<String, String> values = new HashMap<String, String>();
-        values.put(TelemetryConfig.ENDPOINT, "http://user:password@alloy:4318");
-        values.put(TelemetryConfig.PROFILE_ENDPOINT, "https://alloy:9999?token=secret");
-        values.put(TelemetryConfig.PROFILES_ENABLED, "true");
+        values.put(TelemetryConfig.ENDPOINT().key(), "http://user:password@alloy:4318");
+        values.put(TelemetryConfig.PROFILE_ENDPOINT().key(), "https://alloy:9999?token=secret");
+        values.put(TelemetryConfig.PROFILES_ENABLED().key(), "true");
         TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
 
         assertFalse(config.metricsEnabled());
@@ -82,11 +85,93 @@ class TelemetryConfigTest {
     @Test
     void fullSignalEndpointIsNormalizedForEverySignal() {
         Map<String, String> values = new HashMap<String, String>();
-        values.put(TelemetryConfig.ENDPOINT, "http://alloy:4318/v1/traces");
+        values.put(TelemetryConfig.ENDPOINT().key(), "http://alloy:4318/v1/traces");
         TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
 
         assertEquals("http://alloy:4318/v1/metrics", config.otlpSignalEndpoint("metrics"));
         assertEquals("http://alloy:4318/v1/logs", config.otlpSignalEndpoint("logs"));
         assertEquals("http://alloy:4318/v1/traces", config.otlpSignalEndpoint("traces"));
+    }
+
+    @Test
+    void readsSparkConfEntriesAndUsesSparkTimeSyntax() {
+        SparkConf spark = new SparkConf(false)
+                .set(TelemetryConfig.TASK_SAMPLE_RATE().key(), "0.4")
+                .set(TelemetryConfig.BATCH_TIMEOUT().key(), "1500ms")
+                .set(TelemetryConfig.SLOW_TASK_THRESHOLD().key(), "2min");
+        Map<String, String> environment = new HashMap<String, String>();
+        environment.put("SPARK_TELEMETRY_TRACES_TASK_SAMPLE_RATE", "0.2");
+
+        TelemetryConfig config = TelemetryConfig.from(spark, environment);
+
+        assertEquals(0.4d, config.taskSampleRate());
+        assertEquals(Duration.ofMillis(1500), config.batchTimeout());
+        assertEquals(Duration.ofMinutes(2), config.slowTaskThreshold());
+        assertEquals("1500ms", config.toExecutorConfiguration()
+                .get(TelemetryConfig.BATCH_TIMEOUT().key()));
+    }
+
+    @Test
+    void driverConfigurationRoundTripsCanonicalTypedValues() {
+        SparkConf spark = new SparkConf(false)
+                .set(TelemetryConfig.LOG_MINIMUM_LEVEL().key(), "warn")
+                .set(TelemetryConfig.PROFILE_WINDOW().key(), "2500ms");
+
+        TelemetryConfig driver = TelemetryConfig.from(spark, new HashMap<String, String>());
+        TelemetryConfig executor = TelemetryConfig.fromDriver(driver.toExecutorConfiguration());
+
+        assertEquals(TelemetryLogLevel.WARN, executor.minimumLogLevel());
+        assertEquals(Duration.ofMillis(2500), executor.profileWindow());
+        assertEquals(driver.toExecutorConfiguration(), executor.toExecutorConfiguration());
+    }
+
+    @Test
+    void variableSubstitutionCanNeverPropagateSecrets() {
+        String property = "spark.telemetry.test.secret";
+        System.setProperty(property, "do-not-propagate");
+        try {
+            Map<String, String> spark = new HashMap<String, String>();
+            spark.put(TelemetryConfig.SERVICE_NAME().key(), "${system:" + property + "}");
+            TelemetryConfig driver = TelemetryConfig.from(spark, new HashMap<String, String>());
+
+            assertFalse(driver.enabled());
+            assertEquals("spark", driver.serviceName());
+            assertFalse(driver.toExecutorConfiguration().toString().contains("do-not-propagate"));
+
+            Map<String, String> executorValues = new HashMap<String, String>(
+                    TelemetryConfig.from(new HashMap<String, String>(), new HashMap<String, String>())
+                            .toExecutorConfiguration());
+            executorValues.put(TelemetryConfig.SERVICE_NAME().key(), "${env:TELEMETRY_SECRET}");
+            TelemetryConfig executor = TelemetryConfig.fromDriver(executorValues);
+            assertFalse(executor.enabled());
+            assertFalse(executor.toExecutorConfiguration().toString().contains("TELEMETRY_SECRET"));
+        } finally {
+            System.clearProperty(property);
+        }
+    }
+
+    @Test
+    void emptyDriverConfigurationKeepsExecutorDisabled() {
+        TelemetryConfig config = TelemetryConfig.fromDriver(new HashMap<String, String>());
+
+        assertFalse(config.enabled());
+        assertFalse(config.metricsEnabled());
+        assertFalse(config.logsEnabled());
+        assertFalse(config.tracesEnabled());
+    }
+
+    @Test
+    void endpointSubstitutionFailsOpenOnlyAffectedSignals() {
+        Map<String, String> values = new HashMap<String, String>();
+        values.put(TelemetryConfig.ENDPOINT().key(),
+                "http://alloy:4318/${system:spark.telemetry.test.secret}");
+
+        TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
+
+        assertTrue(config.enabled());
+        assertFalse(config.metricsEnabled());
+        assertFalse(config.logsEnabled());
+        assertFalse(config.tracesEnabled());
+        assertEquals("http://127.0.0.1:4318", config.endpoint());
     }
 }

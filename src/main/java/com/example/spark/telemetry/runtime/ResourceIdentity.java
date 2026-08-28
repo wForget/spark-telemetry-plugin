@@ -1,6 +1,5 @@
 package com.example.spark.telemetry.runtime;
 
-import com.example.spark.telemetry.config.TelemetryConfig;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.sdk.resources.Resource;
@@ -8,6 +7,7 @@ import io.opentelemetry.sdk.resources.Resource;
 import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import org.apache.spark.telemetry.config.TelemetryConfig;
 
 /** Signal-aware resource projection. Short-lived identifiers never enter metric resources. */
 public final class ResourceIdentity {

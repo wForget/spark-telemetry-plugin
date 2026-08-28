@@ -33,6 +33,8 @@ mvn -Pspark-4.2 clean verify
 
 切换 profile 时必须执行 `clean`，防止 Scala 2.12 / 2.13 的增量编译产物混入。
 
+`ConfigBuilder` / `ConfigEntry` 属于 Spark 私有 ABI，本项目只保证上述两个精确 profile。Spark 的全局 ConfigEntry 注册表会复用同名条目，因此同一 JVM 不应同时加载不同版本的本插件。
+
 ## 使用
 
 ```bash
@@ -47,11 +49,11 @@ spark-submit \
   --class com.example.OrdersJob app.jar
 ```
 
-OTLP base endpoint 会按信号规范化为 `/v1/metrics`、`/v1/logs`、`/v1/traces`。插件不读取 token、authorization header、TLS private key 等 secret 配置；认证与持久重试由 Alloy 管理。
+OTLP base endpoint 会按信号规范化为 `/v1/metrics`、`/v1/logs`、`/v1/traces`。插件不读取 token、authorization header、TLS private key 等 secret 配置，并拒绝所有 `${env:...}`、`${system:...}` 和 Spark 变量替换表达式，避免解析后的秘密进入 Executor 配置或遥测 Resource；认证与持久重试由 Alloy 管理。
 
 ## 配置
 
-所有 key 由 `TelemetryConfig` 统一定义。环境变量名是 Spark key 的大写下划线形式，例如 `spark.telemetry.endpoint` 对应 `SPARK_TELEMETRY_ENDPOINT`。优先级为 packaged defaults < environment < SparkConf < Driver 验证后的 Executor map。
+所有 key 由 Scala `TelemetryConfig` 使用 Spark `ConfigBuilder` / `ConfigEntry` 统一定义。环境变量名是 Spark key 的大写下划线形式，例如 `spark.telemetry.endpoint` 对应 `SPARK_TELEMETRY_ENDPOINT`。优先级为 packaged defaults < environment < SparkConf < Driver 验证后的 Executor map。时间配置遵循 Spark `timeConf` 语法，支持 `ms`、`s`、`min`、`h` 等单位。
 
 | Key | Default | Description |
 |---|---:|---|

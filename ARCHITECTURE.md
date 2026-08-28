@@ -150,9 +150,7 @@ spark-telemetry-plugin
 │   ├── CircuitBreaker
 │   └── PluginSelfMetrics
 └── config
-    ├── TelemetryConfig
-    ├── ConfigValidator
-    └── EnvironmentResolver
+    └── TelemetryConfig (Scala, Spark ConfigBuilder / ConfigEntry)
 ```
 
 Dependencies should be shaded and relocated to avoid conflicts with Spark, Scala, Netty, gRPC, Guava, and application dependencies. Native profiling libraries should be packaged separately from the core plugin artifact.
