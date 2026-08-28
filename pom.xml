@@ -49,9 +49,9 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
-      <groupId>org.apache.spark</groupId>
-      <artifactId>spark-sql_${scala.binary.version}</artifactId>
-      <version>${spark.version}</version>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
+      <version>${log4j.version}</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -62,7 +62,23 @@
     </dependency>
     <dependency>
       <groupId>io.opentelemetry</groupId>
-      <artifactId>opentelemetry-sdk</artifactId>
+      <artifactId>opentelemetry-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-context</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-sdk-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-sdk-trace</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-sdk-metrics</artifactId>
     </dependency>
     <dependency>
       <groupId>io.opentelemetry</groupId>
@@ -75,7 +91,13 @@
 
     <dependency>
       <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
       <version>${junit.version}</version>
       <scope>test</scope>
     </dependency>
@@ -166,10 +188,6 @@
                   <shadedPattern>com.example.spark.telemetry.shaded.io.opentelemetry</shadedPattern>
                 </relocation>
                 <relocation>
-                  <pattern>io.grpc</pattern>
-                  <shadedPattern>com.example.spark.telemetry.shaded.io.grpc</shadedPattern>
-                </relocation>
-                <relocation>
                   <pattern>com.google.protobuf</pattern>
                   <shadedPattern>com.example.spark.telemetry.shaded.com.google.protobuf</shadedPattern>
                 </relocation>
@@ -247,6 +265,14 @@
         <build.jdk.range>[17,26)</build.jdk.range>
         <surefire.argLine>--add-opens=java.base/sun.nio.ch=ALL-UNNAMED</surefire.argLine>
       </properties>
+      <dependencies>
+        <dependency>
+          <groupId>org.apache.spark</groupId>
+          <artifactId>spark-common-utils_${scala.binary.version}</artifactId>
+          <version>${spark.version}</version>
+          <scope>provided</scope>
+        </dependency>
+      </dependencies>
     </profile>
   </profiles>
 </project>

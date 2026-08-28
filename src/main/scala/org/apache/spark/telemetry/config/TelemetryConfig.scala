@@ -145,9 +145,6 @@ object TelemetryConfig {
     validateAndFreeze(merged)
   }
 
-  def from(sparkConfiguration: JMap[String, String]): TelemetryConfig =
-    from(sparkConfiguration, System.getenv())
-
   def from(
       sparkConfiguration: JMap[String, String],
       environment: JMap[String, String]): TelemetryConfig = {
@@ -299,17 +296,6 @@ object TelemetryConfig {
     }
   }
 
-  private def invalidateEndpoint(
-      conf: SparkConf,
-      strict: Boolean,
-      message: String,
-      affectedSignals: Seq[ConfigEntry[Boolean]],
-      endpointEntry: ConfigEntry[String]): Unit = {
-    if (strict) throw new IllegalArgumentException(message)
-    affectedSignals.foreach(conf.set(_, false))
-    conf.remove(endpointEntry)
-  }
-
   private def validateEndpoint(
       conf: SparkConf,
       strict: Boolean,
@@ -321,7 +307,8 @@ object TelemetryConfig {
     } catch {
       case NonFatal(invalid) =>
         if (strict) throw invalid
-        invalidateEndpoint(conf, strict = false, message, affectedSignals, endpointEntry)
+        affectedSignals.foreach(conf.set(_, false))
+        conf.remove(endpointEntry)
     }
   }
 

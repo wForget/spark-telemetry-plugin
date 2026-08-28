@@ -66,8 +66,7 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
           putContext(previous, "span_id", span.spanId())
         }
         val state = new TaskState(
-          spark.taskAttemptId(), spark.stageId(), spark.stageAttemptNumber(), spark.partitionId(),
-          spark.attemptNumber(), System.nanoTime(), epochStartNanos, span, previous)
+          spark.taskAttemptId(), System.nanoTime(), epochStartNanos, span, previous)
         currentTask.set(state)
       }
     }
@@ -81,10 +80,10 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
   override def shutdown(): Unit = {
     val bridge = logBridge
     logBridge = null
-    if (bridge != null) quietly(bridge.close())
+    if (bridge != null) safely(bridge.close())
     val active = runtime
     runtime = null
-    if (active != null && config != null) quietly(active.close(config.shutdownFlushTimeout()))
+    if (active != null && config != null) safely(active.close(config.shutdownFlushTimeout()))
     currentTask.remove()
   }
 
@@ -135,14 +134,9 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
       case _: LinkageError => ()
     }
   }
-  private def quietly(action: => Unit): Unit = safely(action)
 
   private final class TaskState(
       val taskAttemptId: Long,
-      val stageId: Int,
-      val stageAttempt: Int,
-      val partitionId: Int,
-      val attemptNumber: Int,
       val monotonicStartNanos: Long,
       val epochStartNanos: Long,
       val span: TaskSpanHandle,

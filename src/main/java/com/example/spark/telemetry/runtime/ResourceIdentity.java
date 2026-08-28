@@ -79,11 +79,6 @@ public final class ResourceIdentity {
         return Resource.create(attributes.build());
     }
 
-    public String serviceName() { return serviceName; }
-    public String applicationId() { return applicationId; }
-    public String role() { return role; }
-    public String executorId() { return executorId; }
-
     private AttributesBuilder stableAttributes() {
         AttributesBuilder attributes = Attributes.builder().put("service.name", serviceName);
         putIfPresent(attributes, "service.namespace", serviceNamespace);
