@@ -474,7 +474,7 @@ Routing requirements:
 Example Spark configuration:
 
 ```properties
-spark.plugins=com.example.spark.telemetry.UnifiedTelemetryPlugin
+spark.plugins=cn.wangz.spark.telemetry.UnifiedTelemetryPlugin
 
 spark.telemetry.enabled=true
 spark.telemetry.endpoint=http://node-alloy:4317

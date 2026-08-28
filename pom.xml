@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.example.spark</groupId>
+  <groupId>cn.wangz.spark</groupId>
   <artifactId>spark-unified-telemetry-plugin</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <name>Spark Unified Telemetry Plugin</name>
@@ -191,23 +191,23 @@
               <relocations>
                 <relocation>
                   <pattern>io.opentelemetry</pattern>
-                  <shadedPattern>com.example.spark.telemetry.shaded.io.opentelemetry</shadedPattern>
+                  <shadedPattern>cn.wangz.spark.telemetry.shaded.io.opentelemetry</shadedPattern>
                 </relocation>
                 <relocation>
                   <pattern>com.google.protobuf</pattern>
-                  <shadedPattern>com.example.spark.telemetry.shaded.com.google.protobuf</shadedPattern>
+                  <shadedPattern>cn.wangz.spark.telemetry.shaded.com.google.protobuf</shadedPattern>
                 </relocation>
                 <relocation>
                   <pattern>okhttp3</pattern>
-                  <shadedPattern>com.example.spark.telemetry.shaded.okhttp3</shadedPattern>
+                  <shadedPattern>cn.wangz.spark.telemetry.shaded.okhttp3</shadedPattern>
                 </relocation>
                 <relocation>
                   <pattern>okio</pattern>
-                  <shadedPattern>com.example.spark.telemetry.shaded.okio</shadedPattern>
+                  <shadedPattern>cn.wangz.spark.telemetry.shaded.okio</shadedPattern>
                 </relocation>
                 <relocation>
                   <pattern>kotlin</pattern>
-                  <shadedPattern>com.example.spark.telemetry.shaded.kotlin</shadedPattern>
+                  <shadedPattern>cn.wangz.spark.telemetry.shaded.kotlin</shadedPattern>
                 </relocation>
               </relocations>
               <transformers>

@@ -39,7 +39,7 @@ mvn -Pspark-4.2 clean verify
 ```bash
 spark-submit \
   --jars /path/to/spark-unified-telemetry-plugin-0.1.0-SNAPSHOT-spark-3.5.9_2.12.jar \
-  --conf spark.plugins=com.example.spark.telemetry.UnifiedTelemetryPlugin \
+  --conf spark.plugins=cn.wangz.spark.telemetry.UnifiedTelemetryPlugin \
   --conf spark.telemetry.endpoint=http://127.0.0.1:4317 \
   --conf spark.telemetry.resource.service.name=orders-etl \
   --conf spark.telemetry.resource.service.namespace=data-platform \
