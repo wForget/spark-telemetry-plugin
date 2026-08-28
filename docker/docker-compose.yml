@@ -8,7 +8,7 @@ services:
       - -config.file=/etc/mimir/mimir.yaml
     restart: unless-stopped
     volumes:
-      - ./docker/mimir/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - ./mimir/mimir.yaml:/etc/mimir/mimir.yaml:ro
       - mimir-data:/tmp/mimir
 
   loki:
@@ -18,7 +18,7 @@ services:
       - -config.file=/etc/loki/loki.yaml
     restart: unless-stopped
     volumes:
-      - ./docker/loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
       - loki-data:/loki
 
   tempo:
@@ -29,7 +29,7 @@ services:
       - -config.file=/etc/tempo/tempo.yaml
     restart: unless-stopped
     volumes:
-      - ./docker/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo-data:/var/tempo
 
   pyroscope:
@@ -39,7 +39,7 @@ services:
       - -config.file=/etc/pyroscope/config.yaml
     restart: unless-stopped
     volumes:
-      - ./docker/pyroscope/pyroscope.yaml:/etc/pyroscope/config.yaml:ro
+      - ./pyroscope/pyroscope.yaml:/etc/pyroscope/config.yaml:ro
       - pyroscope-data:/data
       - pyroscope-compactor-data:/data-compactor
       - pyroscope-metastore-data:/data-metastore
@@ -58,7 +58,7 @@ services:
       - loki
       - tempo
     volumes:
-      - ./docker/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - alloy-data:/var/lib/alloy/data
 
   grafana:
@@ -76,7 +76,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_PLUGINS_PREINSTALL_SYNC: grafana-pyroscope-app
     volumes:
-      - ./docker/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
       - grafana-data:/var/lib/grafana
 
 volumes:
