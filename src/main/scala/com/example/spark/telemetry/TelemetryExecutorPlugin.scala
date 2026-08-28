@@ -2,7 +2,7 @@ package com.example.spark.telemetry
 
 import java.util.{HashMap => JHashMap, Map => JMap}
 
-import com.example.spark.telemetry.instrumentation.{Log4j2TelemetryBridge, SparkSelfMetrics}
+import com.example.spark.telemetry.instrumentation.Log4j2TelemetryBridge
 import com.example.spark.telemetry.runtime.{ResourceIdentity, TaskSampler, TaskSpanHandle, TelemetryRuntime}
 import org.apache.logging.log4j.ThreadContext
 import org.apache.spark.TaskContext
@@ -34,7 +34,6 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
           context.executorID())
         val created = TelemetryRuntime.create(parsed, identity)
         runtime = created
-        SparkSelfMetrics.register(context.metricRegistry(), created)
         if (parsed.logCaptureEnabled()) {
           logBridge = Log4j2TelemetryBridge.install("executor-" + context.executorID(), created.logs())
         }

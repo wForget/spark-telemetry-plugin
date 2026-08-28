@@ -1,6 +1,5 @@
 package com.example.spark.telemetry.runtime;
 
-import com.example.spark.telemetry.reliability.PluginSelfMetrics;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.CompletableResultCode;
@@ -12,11 +11,9 @@ import io.opentelemetry.sdk.trace.SpanProcessor;
 final class TaskFilteringSpanProcessor implements SpanProcessor {
     static final AttributeKey<Boolean> RETAIN_TASK = AttributeKey.booleanKey("spark.telemetry.task.retained");
     private final SpanProcessor delegate;
-    private final PluginSelfMetrics selfMetrics;
 
-    TaskFilteringSpanProcessor(SpanProcessor delegate, PluginSelfMetrics selfMetrics) {
+    TaskFilteringSpanProcessor(SpanProcessor delegate) {
         this.delegate = delegate;
-        this.selfMetrics = selfMetrics;
     }
 
     @Override public void onStart(Context parentContext, ReadWriteSpan span) {
@@ -28,8 +25,6 @@ final class TaskFilteringSpanProcessor implements SpanProcessor {
         Boolean retained = span.getAttribute(RETAIN_TASK);
         if (retained == null || retained.booleanValue()) {
             delegate.onEnd(span);
-        } else {
-            selfMetrics.recordDropped();
         }
     }
     @Override public boolean isEndRequired() { return true; }

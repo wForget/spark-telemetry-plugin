@@ -1,6 +1,5 @@
 package com.example.spark.telemetry.runtime;
 
-import com.example.spark.telemetry.reliability.PluginSelfMetrics;
 import io.opentelemetry.api.logs.LogRecordBuilder;
 import io.opentelemetry.api.logs.Logger;
 import io.opentelemetry.api.logs.Severity;
@@ -14,12 +13,10 @@ import org.apache.spark.telemetry.config.TelemetryLogLevel;
 public final class LogPipeline {
     private final Logger logger;
     private final TelemetryLogLevel minimumLevel;
-    private final PluginSelfMetrics selfMetrics;
 
-    LogPipeline(Logger logger, TelemetryLogLevel minimumLevel, PluginSelfMetrics selfMetrics) {
+    LogPipeline(Logger logger, TelemetryLogLevel minimumLevel) {
         this.logger = logger;
         this.minimumLevel = minimumLevel;
-        this.selfMetrics = selfMetrics;
     }
 
     public void emit(
@@ -32,7 +29,6 @@ public final class LogPipeline {
             String exceptionStack,
             Map<String, String> context) {
         if (!minimumLevel.includes(level) || excluded(loggerName)) return;
-        selfMetrics.recordReceived();
         LogRecordBuilder record = logger.logRecordBuilder()
                 .setTimestamp(epochMillis, TimeUnit.MILLISECONDS)
                 .setObservedTimestamp(Instant.now())

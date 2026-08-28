@@ -10,8 +10,8 @@ Spark Driver / Executor 进程内的 fail-open 遥测插件。Metrics、logs、t
 - 保留原日志输出的 Log4j2 → OTLP logs bridge，含递归保护和 Spark MDC
 - 三信号独立异步处理：OTel metrics reader、trace/log batch processor
 - 统一 Spark 配置、环境变量优先级、严格/按信号 fail-open 校验
-- Spark plugin self-metrics、幂等且共享截止时间的有界 shutdown
-- OpenTelemetry、Protobuf、OkHttp、Okio、Kotlin 依赖 shade + relocate；Spark/Scala/Log4j/Dropwizard 均由运行时提供
+- 幂等且共享截止时间的有界 shutdown
+- OpenTelemetry、Protobuf、OkHttp、Okio、Kotlin 依赖 shade + relocate；Spark/Scala/Log4j 均由运行时提供
 
 SQL、Structured Streaming、adaptive sampling 和 profiling 属于后续阶段；当前核心制品不包含 profiler、profile 数据模型、传输或配置。
 

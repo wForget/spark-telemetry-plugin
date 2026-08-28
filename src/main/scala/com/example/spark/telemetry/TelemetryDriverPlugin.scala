@@ -2,7 +2,7 @@ package com.example.spark.telemetry
 
 import java.util.{Collections, Map => JMap}
 
-import com.example.spark.telemetry.instrumentation.{Log4j2TelemetryBridge, SparkSelfMetrics}
+import com.example.spark.telemetry.instrumentation.Log4j2TelemetryBridge
 import com.example.spark.telemetry.runtime.{DeferredTelemetrySink, ResourceIdentity, TelemetryRuntime}
 import org.apache.spark.SparkContext
 import org.apache.spark.api.plugin.{DriverPlugin, PluginContext}
@@ -48,7 +48,6 @@ final class TelemetryDriverPlugin extends DriverPlugin {
       created.applicationStarted(applicationStartMillis)
       runtime = created
       deferred.bind(created)
-      SparkSelfMetrics.register(context.metricRegistry(), created)
       if (finalConfig.logCaptureEnabled()) {
         logBridge = Log4j2TelemetryBridge.install("driver-" + applicationId, created.logs())
       }
