@@ -30,6 +30,7 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
         conf.get("spark.app.id", "unknown"))
       config = parsed
       if (parsed.enabled()) {
+        val isLocalExecutor = context.executorID() == "driver"
         val identity = ResourceIdentity.executor(
           parsed,
           conf.get("spark.app.id", "unknown"),
@@ -37,13 +38,15 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
         // Local mode shares the Driver's SparkEnv and MetricsSystem. The Driver runtime already
         // exports that registry, so a second reader here would duplicate every metric.
         val sparkMetrics =
-          if (parsed.metricsEnabled() && context.executorID() != "driver")
+          if (parsed.metricsEnabled() && !isLocalExecutor)
             SparkMetricRegistry.current()
           else
             null
         val created = TelemetryRuntime.create(parsed, identity, sparkMetrics)
         runtime = created
-        if (parsed.logCaptureEnabled()) {
+        // Local mode shares the Driver's Log4j context. Installing a second root appender would
+        // duplicate every record and tag one copy with the not-yet-assigned "unknown/driver" ID.
+        if (parsed.logCaptureEnabled() && !isLocalExecutor) {
           logBridge = Log4j2TelemetryBridge.install("executor-" + context.executorID(), created.logs())
         }
       }
