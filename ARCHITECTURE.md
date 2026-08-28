@@ -1,4 +1,4 @@
-# Spark Unified Telemetry Plugin Architecture
+# Spark Telemetry Plugin Architecture
 
 Status: Draft  
 Target: Apache Spark 3.0+  
@@ -38,7 +38,7 @@ The plugin does not connect directly to Mimir, Loki, Tempo, or Pyroscope. Alloy 
 - Spark `DriverPlugin` and `ExecutorPlugin` lifecycle integration
 - Application, job, stage, streaming-query, micro-batch, and sampled task telemetry
 - Asynchronous push of metrics, logs, traces, and profiles
-- Unified resource attributes and cross-signal correlation
+- Consistent resource attributes and cross-signal correlation
 - Batching, bounded queues, retry, circuit breaking, and graceful shutdown
 - Node-local Alloy and centralized Alloy Gateway deployment
 - Mimir, Loki, Tempo, and Pyroscope backends
@@ -120,7 +120,7 @@ Executors never forward logs, traces, or profiles through the Driver. This avoid
 ```text
 spark-telemetry-plugin
 ├── spark-plugin
-│   ├── UnifiedTelemetryPlugin
+│   ├── SparkTelemetryPlugin
 │   ├── TelemetryDriverPlugin
 │   └── TelemetryExecutorPlugin
 ├── spark-instrumentation
@@ -187,7 +187,7 @@ Each Executor plugin manages local process signals:
 
 `onTaskStart`, `onTaskSucceeded`, and `onTaskFailed` execute on Spark task threads. Their implementations only create small event objects and call non-blocking `offer()` on a bounded queue. They must never serialize OTLP payloads or call a remote service.
 
-## 7. Unified telemetry runtime
+## 7. Telemetry runtime
 
 Each JVM owns one runtime:
 
@@ -474,7 +474,7 @@ Routing requirements:
 Example Spark configuration:
 
 ```properties
-spark.plugins=cn.wangz.spark.telemetry.UnifiedTelemetryPlugin
+spark.plugins=cn.wangz.spark.telemetry.SparkTelemetryPlugin
 
 spark.telemetry.enabled=true
 spark.telemetry.endpoint=http://node-alloy:4317
@@ -629,7 +629,7 @@ Accepted. Relaying all Executor telemetry through the Driver creates a bottlenec
 
 Accepted. Different signals have different volumes, priorities, and overload behavior. A shared queue creates head-of-line blocking.
 
-### ADR-003: No custom unified transport
+### ADR-003: No custom telemetry transport
 
 Accepted. Metrics, logs, and traces use OTLP; profiles use the production-ready Pyroscope push path until OTLP Profiles matures.
 

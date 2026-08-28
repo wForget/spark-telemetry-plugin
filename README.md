@@ -1,4 +1,4 @@
-# Spark Unified Telemetry Plugin
+# Spark Telemetry Plugin
 
 Spark Driver / Executor 进程内的 fail-open 遥测插件。Metrics、logs、traces 通过 OTLP gRPC 推送到节点本地 Grafana Alloy。
 
@@ -24,10 +24,10 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 export PATH="$JAVA_HOME/bin:$PATH"
 
 mvn -Pspark-3.5 clean verify
-# target/spark-unified-telemetry-plugin-0.1.0-SNAPSHOT-spark-3.5.9_2.12.jar
+# target/spark-telemetry-plugin-0.1.0-SNAPSHOT-spark-3.5.9_2.12.jar
 
 mvn -Pspark-4.2 clean verify
-# target/spark-unified-telemetry-plugin-0.1.0-SNAPSHOT-spark-4.2.0_2.13.jar
+# target/spark-telemetry-plugin-0.1.0-SNAPSHOT-spark-4.2.0_2.13.jar
 ```
 
 切换 profile 时必须执行 `clean`，防止 Scala 2.12 / 2.13 的增量编译产物混入。
@@ -38,8 +38,8 @@ mvn -Pspark-4.2 clean verify
 
 ```bash
 spark-submit \
-  --jars /path/to/spark-unified-telemetry-plugin-0.1.0-SNAPSHOT-spark-3.5.9_2.12.jar \
-  --conf spark.plugins=cn.wangz.spark.telemetry.UnifiedTelemetryPlugin \
+  --jars /path/to/spark-telemetry-plugin-0.1.0-SNAPSHOT-spark-3.5.9_2.12.jar \
+  --conf spark.plugins=cn.wangz.spark.telemetry.SparkTelemetryPlugin \
   --conf spark.telemetry.endpoint=http://127.0.0.1:4317 \
   --conf spark.telemetry.resource.service.name=orders-etl \
   --conf spark.telemetry.resource.service.namespace=data-platform \

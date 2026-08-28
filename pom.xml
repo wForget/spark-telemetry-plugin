@@ -5,9 +5,9 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>cn.wangz.spark</groupId>
-  <artifactId>spark-unified-telemetry-plugin</artifactId>
+  <artifactId>spark-telemetry-plugin</artifactId>
   <version>0.1.0-SNAPSHOT</version>
-  <name>Spark Unified Telemetry Plugin</name>
+  <name>Spark Telemetry Plugin</name>
   <description>Fail-open Spark telemetry plugin exporting through node-local Grafana Alloy.</description>
 
   <properties>

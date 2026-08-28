@@ -20,7 +20,7 @@ class SparkPluginSmokeTest {
                 .setMaster("local[2]")
                 .setAppName("telemetry-plugin-smoke")
                 .set("spark.ui.enabled", "false")
-                .set("spark.plugins", UnifiedTelemetryPlugin.class.getName())
+                .set("spark.plugins", SparkTelemetryPlugin.class.getName())
                 .set("spark.telemetry.strict", "true")
                 .set("spark.telemetry.endpoint", "http://127.0.0.1:1")
                 .set("spark.telemetry.batch.timeout", "1h")

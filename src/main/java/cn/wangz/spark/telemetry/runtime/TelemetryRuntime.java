@@ -30,7 +30,7 @@ import org.apache.spark.telemetry.config.TelemetryConfig;
  * One Driver or Executor process-local runtime. Providers are deliberately not installed globally.
  */
 public final class TelemetryRuntime implements AutoCloseable {
-    private static final String INSTRUMENTATION_SCOPE = "spark-unified-telemetry-plugin";
+    private static final String INSTRUMENTATION_SCOPE = "spark-telemetry-plugin";
 
     private final TelemetryConfig config;
     private final SdkMeterProvider meterProvider;
