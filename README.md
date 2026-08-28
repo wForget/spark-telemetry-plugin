@@ -6,12 +6,12 @@ Spark Driver / Executor 进程内的 fail-open 遥测插件。Metrics、logs、t
 
 - Spark `DriverPlugin` / `ExecutorPlugin` 生命周期及 Driver 启动期有界事件桥接
 - Spark application、job、stage trace，以及失败/慢任务全保留、普通任务稳定采样的独立 task trace
-- job、stage、task、executor 低基数 metrics
+- Driver / Executor 当前 JVM 中 Spark `MetricsSystem#registry` 的原生指标
 - 保留原日志输出的 Log4j2 → OTLP logs bridge，含递归保护和 Spark MDC
 - 三信号独立异步处理：OTel metrics reader、trace/log batch processor
 - 统一 Spark 配置、环境变量优先级、严格/按信号 fail-open 校验
 - 幂等且共享截止时间的有界 shutdown
-- OpenTelemetry、Protobuf、OkHttp、Okio、Kotlin 依赖 shade + relocate；Spark/Scala/Log4j 均由运行时提供
+- OpenTelemetry、Protobuf、OkHttp、Okio、Kotlin 依赖 shade + relocate；Spark/Scala/Log4j/Dropwizard 均由运行时提供
 
 SQL、Structured Streaming、adaptive sampling 和 profiling 属于后续阶段；当前核心制品不包含 profiler、profile 数据模型、传输或配置。
 
@@ -32,7 +32,7 @@ mvn -Pspark-4.2 clean verify
 
 切换 profile 时必须执行 `clean`，防止 Scala 2.12 / 2.13 的增量编译产物混入。
 
-`ConfigBuilder` / `ConfigEntry` 属于 Spark 私有 ABI，本项目只保证上述两个精确 profile。Spark 的全局 ConfigEntry 注册表会复用同名条目，因此同一 JVM 不应同时加载不同版本的本插件。
+`ConfigBuilder` / `ConfigEntry` 以及 `MetricsSystem#registry` 属于 Spark 私有 ABI，本项目只保证上述两个精确 profile。Spark 的全局 ConfigEntry 注册表会复用同名条目，因此同一 JVM 不应同时加载不同版本的本插件。
 
 ## 使用
 
@@ -73,5 +73,7 @@ OTLP base endpoint 会按信号规范化为 `/v1/metrics`、`/v1/logs`、`/v1/tr
 | `spark.telemetry.shutdown.flush-timeout` | `3s` | 所有信号共享的最终 flush 截止时间 |
 
 Metric Resource 刻意不包含 app/job/stage/task/executor/trace/span ID；它只增加一个不暴露 Spark ID 的 JVM 级 `service.instance.id`，用于避免多个 cumulative writer 相互 reset。若 Alloy 会把该属性提升为长期 Mimir label，应在 Alloy 侧先按目标维度聚合。Trace/log 使用同一规范化身份模型的详细投影。
+
+Metrics pipeline 不创建或维护插件指标，也不再从 Spark listener / task callback 记录 job、stage、task、executor 指标。每个导出周期直接读取当前 JVM 的 Spark Dropwizard registry，因此 Spark 后续动态注册的指标也会被投递；非数值 Gauge 会被忽略，单个 Gauge 读取失败不会影响其余指标。Local 模式的 Driver 和 Executor 共享同一个 `MetricsSystem`，只由 Driver runtime 投递一次。
 
 Executor task span 是独立 trace，并通过 Spark ID 查询关联；公开 Spark Plugin API 无法安全地把 Driver span context 注入每个 task，因此不伪造 parent。为了让执行期间的日志获得真实 trace/span ID，task 开始时会创建 recording span，结束时才根据失败、慢任务和稳定采样规则决定是否送入有界导出队列；因此未保留普通任务的日志可能引用一个未导出的 trace，这是尾部保留策略的预期权衡。

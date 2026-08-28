@@ -4,6 +4,7 @@ import java.util.{Collections, Map => JMap}
 
 import com.example.spark.telemetry.runtime.{DeferredTelemetrySink, ResourceIdentity, TelemetryRuntime}
 import com.example.spark.telemetry.signal.logs.Log4j2TelemetryBridge
+import com.example.spark.telemetry.signal.metrics.SparkMetricRegistry
 import org.apache.spark.SparkContext
 import org.apache.spark.api.plugin.{DriverPlugin, PluginContext}
 import org.apache.spark.telemetry.config.TelemetryConfig
@@ -44,7 +45,9 @@ final class TelemetryDriverPlugin extends DriverPlugin {
     try {
       val finalConfig = config.withApplication(config.applicationName(), applicationId)
       config = finalConfig
-      val created = TelemetryRuntime.create(finalConfig, ResourceIdentity.driver(finalConfig, applicationId))
+      val sparkMetrics = if (finalConfig.metricsEnabled()) SparkMetricRegistry.current() else null
+      val created = TelemetryRuntime.create(
+        finalConfig, ResourceIdentity.driver(finalConfig, applicationId), sparkMetrics)
       created.applicationStarted(applicationStartMillis)
       runtime = created
       deferred.bind(created)

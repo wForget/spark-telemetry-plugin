@@ -4,6 +4,7 @@ import java.util.{HashMap => JHashMap, Map => JMap}
 
 import com.example.spark.telemetry.runtime.{ResourceIdentity, TelemetryRuntime}
 import com.example.spark.telemetry.signal.logs.Log4j2TelemetryBridge
+import com.example.spark.telemetry.signal.metrics.SparkMetricRegistry
 import com.example.spark.telemetry.signal.traces.{TaskSampler, TaskSpanHandle}
 import org.apache.logging.log4j.ThreadContext
 import org.apache.spark.TaskContext
@@ -33,7 +34,14 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
           parsed,
           conf.get("spark.app.id", "unknown"),
           context.executorID())
-        val created = TelemetryRuntime.create(parsed, identity)
+        // Local mode shares the Driver's SparkEnv and MetricsSystem. The Driver runtime already
+        // exports that registry, so a second reader here would duplicate every metric.
+        val sparkMetrics =
+          if (parsed.metricsEnabled() && context.executorID() != "driver")
+            SparkMetricRegistry.current()
+          else
+            null
+        val created = TelemetryRuntime.create(parsed, identity, sparkMetrics)
         runtime = created
         if (parsed.logCaptureEnabled()) {
           logBridge = Log4j2TelemetryBridge.install("executor-" + context.executorID(), created.logs())

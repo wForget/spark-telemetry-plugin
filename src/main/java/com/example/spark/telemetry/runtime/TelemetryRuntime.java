@@ -1,12 +1,12 @@
 package com.example.spark.telemetry.runtime;
 
+import com.codahale.metrics.MetricRegistry;
 import com.example.spark.telemetry.signal.logs.LogPipeline;
-import com.example.spark.telemetry.signal.metrics.MetricPipeline;
+import com.example.spark.telemetry.signal.metrics.SparkMetricProducer;
 import com.example.spark.telemetry.signal.traces.TaskFilteringSpanProcessor;
 import com.example.spark.telemetry.signal.traces.TaskSpanHandle;
 import com.example.spark.telemetry.signal.traces.TracePipeline;
 import io.opentelemetry.api.logs.Logger;
-import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter;
@@ -36,7 +36,6 @@ public final class TelemetryRuntime implements AutoCloseable {
     private final SdkMeterProvider meterProvider;
     private final SdkTracerProvider tracerProvider;
     private final SdkLoggerProvider loggerProvider;
-    private final MetricPipeline metrics;
     private final TracePipeline traces;
     private final LogPipeline logs;
     private final AtomicReference<State> state = new AtomicReference<State>(State.RUNNING);
@@ -46,23 +45,21 @@ public final class TelemetryRuntime implements AutoCloseable {
             SdkMeterProvider meterProvider,
             SdkTracerProvider tracerProvider,
             SdkLoggerProvider loggerProvider,
-            MetricPipeline metrics,
             TracePipeline traces,
             LogPipeline logs) {
         this.config = config;
         this.meterProvider = meterProvider;
         this.tracerProvider = tracerProvider;
         this.loggerProvider = loggerProvider;
-        this.metrics = metrics;
         this.traces = traces;
         this.logs = logs;
     }
 
-    public static TelemetryRuntime create(TelemetryConfig config, ResourceIdentity identity) {
-        SdkMeterProvider meterProvider = buildMeterProvider(config, identity);
+    public static TelemetryRuntime create(
+            TelemetryConfig config, ResourceIdentity identity, MetricRegistry sparkMetrics) {
+        SdkMeterProvider meterProvider = buildMeterProvider(config, identity, sparkMetrics);
         SdkTracerProvider tracerProvider = buildTracerProvider(config, identity);
         SdkLoggerProvider loggerProvider = buildLoggerProvider(config, identity);
-        Meter meter = meterProvider.get(INSTRUMENTATION_SCOPE);
         Tracer tracer = tracerProvider.get(INSTRUMENTATION_SCOPE);
         Logger logger = loggerProvider.get(INSTRUMENTATION_SCOPE);
         return new TelemetryRuntime(
@@ -70,7 +67,6 @@ public final class TelemetryRuntime implements AutoCloseable {
                 meterProvider,
                 tracerProvider,
                 loggerProvider,
-                new MetricPipeline(meter),
                 new TracePipeline(tracer),
                 new LogPipeline(logger, config.minimumLogLevel()));
     }
@@ -86,51 +82,31 @@ public final class TelemetryRuntime implements AutoCloseable {
     }
     public void jobStarted(final int jobId, final int[] stageIds, final long epochMillis) {
         runSafely(new Action() { @Override public void run() {
-            metrics.jobStarted();
             traces.jobStarted(jobId, stageIds, epochMillis);
         }});
     }
     public void jobEnded(
             final int jobId,
-            final long startMillis,
             final long endMillis,
             final String outcome,
             final String failure) {
         runSafely(new Action() { @Override public void run() {
-            metrics.jobEnded(Math.max(0L, endMillis - startMillis), outcome);
             traces.jobEnded(jobId, endMillis, outcome, failure);
         }});
     }
     public void stageStarted(final int stageId, final int attempt, final long epochMillis) {
         runSafely(new Action() { @Override public void run() {
-            metrics.stageStarted();
             traces.stageStarted(stageId, attempt, epochMillis);
         }});
     }
     public void stageEnded(
             final int stageId,
             final int attempt,
-            final long startMillis,
             final long endMillis,
             final String outcome,
             final String failure) {
         runSafely(new Action() { @Override public void run() {
-            metrics.stageEnded(Math.max(0L, endMillis - startMillis), outcome);
             traces.stageEnded(stageId, attempt, endMillis, outcome, failure);
-        }});
-    }
-    public void executorAdded() {
-        runSafely(new Action() { @Override public void run() { metrics.executorAdded(); } });
-    }
-    public void executorRemoved() {
-        runSafely(new Action() { @Override public void run() { metrics.executorRemoved(); } });
-    }
-    public void taskMetricStarted() {
-        runSafely(new Action() { @Override public void run() { metrics.taskStarted(); } });
-    }
-    public void taskMetricEnded(final long durationMillis, final String outcome) {
-        runSafely(new Action() { @Override public void run() {
-            metrics.taskEnded(TimeUnit.MILLISECONDS.toNanos(Math.max(0L, durationMillis)), outcome);
         }});
     }
     public TaskSpanHandle taskTraceStarted(
@@ -208,9 +184,10 @@ public final class TelemetryRuntime implements AutoCloseable {
     }
 
     private static SdkMeterProvider buildMeterProvider(
-            TelemetryConfig config, ResourceIdentity identity) {
+            TelemetryConfig config, ResourceIdentity identity, MetricRegistry sparkMetrics) {
         SdkMeterProviderBuilder builder = SdkMeterProvider.builder().setResource(identity.metricResource());
-        if (config.metricsEnabled()) {
+        if (config.metricsEnabled() && sparkMetrics != null) {
+            builder.registerMetricProducer(new SparkMetricProducer(sparkMetrics));
             OtlpHttpMetricExporter otlpExporter = OtlpHttpMetricExporter.builder()
                     .setEndpoint(config.otlpSignalEndpoint("metrics"))
                     .setTimeout(config.exportTimeout())

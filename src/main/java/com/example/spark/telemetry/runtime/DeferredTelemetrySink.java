@@ -43,33 +43,19 @@ public final class DeferredTelemetrySink {
         submit(new Event() { @Override public void apply(TelemetryRuntime runtime) { runtime.jobStarted(id, copied, time); } });
     }
     public void jobEnded(
-            final int id, final long start, final long end, final String outcome, final String failure) {
+            final int id, final long end, final String outcome, final String failure) {
         submit(new Event() { @Override public void apply(TelemetryRuntime runtime) {
-            runtime.jobEnded(id, start, end, outcome, failure);
+            runtime.jobEnded(id, end, outcome, failure);
         }});
     }
     public void stageStarted(final int id, final int attempt, final long time) {
         submit(new Event() { @Override public void apply(TelemetryRuntime runtime) { runtime.stageStarted(id, attempt, time); } });
     }
     public void stageEnded(
-            final int id, final int attempt, final long start, final long end,
+            final int id, final int attempt, final long end,
             final String outcome, final String failure) {
         submit(new Event() { @Override public void apply(TelemetryRuntime runtime) {
-            runtime.stageEnded(id, attempt, start, end, outcome, failure);
-        }});
-    }
-    public void executorAdded() {
-        submit(new Event() { @Override public void apply(TelemetryRuntime runtime) { runtime.executorAdded(); } });
-    }
-    public void executorRemoved() {
-        submit(new Event() { @Override public void apply(TelemetryRuntime runtime) { runtime.executorRemoved(); } });
-    }
-    public void taskStarted() {
-        submit(new Event() { @Override public void apply(TelemetryRuntime runtime) { runtime.taskMetricStarted(); } });
-    }
-    public void taskEnded(final long durationMillis, final String outcome) {
-        submit(new Event() { @Override public void apply(TelemetryRuntime runtime) {
-            runtime.taskMetricEnded(durationMillis, outcome);
+            runtime.stageEnded(id, attempt, end, outcome, failure);
         }});
     }
 

@@ -70,7 +70,7 @@ flowchart LR
         DR --> RC["Shared resource identity<br/>and correlation context"]
         ER --> RC
 
-        RC --> MQ["Metrics pipeline<br/>aggregation and cardinality guard"]
+        RC --> MQ["Spark MetricsSystem registry bridge<br/>read-only conversion"]
         RC --> LQ["Logs pipeline<br/>level filtering and redaction"]
         RC --> TQ["Traces pipeline<br/>span model and sampling"]
         RC --> PQ["Profiles pipeline<br/>sampling windows and rate limits"]
@@ -133,7 +133,7 @@ spark-telemetry-plugin
 │   ├── TelemetryRuntime
 │   ├── ResourceIdentity
 │   ├── CorrelationContext
-│   ├── MetricPipeline
+│   ├── SparkMetricProducer
 │   ├── LogPipeline
 │   ├── TracePipeline
 │   └── ProfilePipeline
@@ -147,8 +147,7 @@ spark-telemetry-plugin
 │   ├── BoundedSignalQueue
 │   ├── BatchProcessor
 │   ├── RetryPolicy
-│   ├── CircuitBreaker
-│   └── PluginSelfMetrics
+│   └── CircuitBreaker
 └── config
     └── TelemetryConfig (Scala, Spark ConfigBuilder / ConfigEntry)
 ```
@@ -164,9 +163,8 @@ The Driver plugin manages global application semantics:
 - Initialize the Driver `TelemetryRuntime`.
 - Establish application resource identity.
 - Install Spark listeners after the Spark context is ready.
-- Register plugin self-metrics through `PluginContext.metricRegistry()`.
+- Export the process-local Spark `MetricsSystem` registry without registering plugin metrics.
 - Convert Spark events into application, job, stage, SQL, and streaming telemetry.
-- Aggregate application-level metrics.
 - Return validated Executor configuration from `DriverPlugin.init()`.
 - Perform a bounded final flush during shutdown.
 
@@ -183,7 +181,7 @@ Each Executor plugin manages local process signals:
 - Start or attach the configured profiler.
 - Record task timing and failure events.
 - Emit sampled task spans.
-- Collect JVM/runtime metrics.
+- Export Spark's process-local registry, including its JVM/runtime sources.
 - Push directly to node-local Alloy.
 - Perform a short bounded flush during Executor shutdown.
 
@@ -270,18 +268,20 @@ These high-cardinality identifiers belong in traces, structured log metadata, pr
 
 ### 9.1 Metrics
 
-Metrics are generated from Driver-side Spark listeners, Executor lifecycle events, JVM runtime instruments, and plugin self-observability.
+Metrics come exclusively from the process-local Spark `MetricsSystem#registry`. The plugin does not
+create instruments or update metric state from Spark listener and task lifecycle callbacks. An OTel
+`MetricProducer` reads the Dropwizard registry on each collection, so metrics registered by Spark at
+runtime are discovered without a second registry or synchronization path.
+Local mode shares one `MetricsSystem` between Driver and Executor plugin components, so only the
+Driver runtime exports that registry.
 
-Recommended instruments:
+Numeric gauges and decrementable Dropwizard counters are exported as gauges. Meter counts are
+cumulative sums and rates are gauges. Histogram and timer counts are cumulative sums, while snapshot
+statistics are gauges; timer durations are converted from nanoseconds to milliseconds. Unsupported
+non-numeric gauges are skipped independently.
 
-- Counters: completed and failed jobs, stages, and tasks
-- Counters: input, output, shuffle, and spill bytes
-- Histograms: job, stage, task, and micro-batch duration
-- Up/down counters: active jobs, stages, tasks, and Executors
-- Gauges: JVM heap, non-heap memory, thread count, and queue depth
-- Counters: telemetry export success, retry, rejection, and drop counts
-
-The default transport is OTLP Metrics push to Alloy. Gauge updates may be coalesced when the queue is full. Cumulative counters must preserve monotonicity within one service instance.
+The transport is OTLP Metrics push to Alloy. Cumulative values retain process-lifetime start time and
+the metric Resource identifies one JVM writer.
 
 ### 9.2 Logs
 
@@ -512,25 +512,9 @@ Secrets are deliberately excluded from this model.
 
 ## 15. Plugin self-observability
 
-The plugin exports its own bounded-cardinality metrics:
-
-```text
-spark_telemetry_events_received_total
-spark_telemetry_events_exported_total
-spark_telemetry_events_dropped_total
-spark_telemetry_export_retries_total
-spark_telemetry_export_failures_total
-spark_telemetry_queue_size
-spark_telemetry_queue_capacity
-spark_telemetry_batch_size
-spark_telemetry_export_duration_seconds
-spark_telemetry_profile_samples_total
-spark_telemetry_runtime_cpu_seconds_total
-```
-
-Required dimensions are limited to signal, Spark role, outcome, and exporter type.
-
-The plugin must log a rate-limited warning when a queue begins dropping data, but it must avoid recursive export of that warning through its own log appender.
+The plugin does not register self-metrics because metrics export is intentionally limited to entries
+owned by Spark's `MetricsSystem` registry. Exporter health is observed at Alloy and through
+rate-limited plugin logs, which must be excluded from recursive export by the log bridge.
 
 ## 16. Failure model
 

@@ -61,6 +61,12 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <groupId>io.dropwizard.metrics</groupId>
+      <artifactId>metrics-core</artifactId>
+      <version>${dropwizard.metrics.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-api</artifactId>
     </dependency>
@@ -249,6 +255,7 @@
         <scala.version>2.12.18</scala.version>
         <scala.binary.version>2.12</scala.binary.version>
         <log4j.version>2.20.0</log4j.version>
+        <dropwizard.metrics.version>4.2.19</dropwizard.metrics.version>
         <java.release>8</java.release>
         <build.jdk.range>[17,26)</build.jdk.range>
         <surefire.argLine>--add-opens=java.base/sun.nio.ch=ALL-UNNAMED</surefire.argLine>
@@ -261,6 +268,7 @@
         <scala.version>2.13.18</scala.version>
         <scala.binary.version>2.13</scala.binary.version>
         <log4j.version>2.25.4</log4j.version>
+        <dropwizard.metrics.version>4.2.37</dropwizard.metrics.version>
         <java.release>17</java.release>
         <build.jdk.range>[17,26)</build.jdk.range>
         <surefire.argLine>--add-opens=java.base/sun.nio.ch=ALL-UNNAMED</surefire.argLine>
