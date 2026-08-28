@@ -48,9 +48,9 @@ final class TelemetryDriverPlugin extends DriverPlugin {
       val sparkMetrics = if (finalConfig.metricsEnabled()) SparkMetricRegistry.current() else null
       val created = TelemetryRuntime.create(
         finalConfig, ResourceIdentity.driver(finalConfig, applicationId), sparkMetrics)
-      created.applicationStarted(applicationStartMillis)
+      created.traces().applicationStarted(applicationStartMillis)
       runtime = created
-      deferred.bind(created)
+      deferred.bind(created.traces())
       if (finalConfig.logCaptureEnabled()) {
         logBridge = Log4j2TelemetryBridge.install("driver-" + applicationId, created.logs())
       }

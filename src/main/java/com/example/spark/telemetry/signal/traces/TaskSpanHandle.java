@@ -29,12 +29,17 @@ public final class TaskSpanHandle {
         try {
             scope.close();
         } finally {
-            span.setAttribute("outcome", outcome == null ? "unknown" : outcome);
-            span.setAttribute(TaskFilteringSpanProcessor.RETAIN_TASK, retain);
-            if (!"success".equals(outcome)) {
-                span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR, failure == null ? "" : failure);
+            try {
+                span.setAttribute("outcome", outcome == null ? "unknown" : outcome);
+                span.setAttribute(TaskFilteringSpanProcessor.RETAIN_TASK, retain);
+                if (!"success".equals(outcome)) {
+                    span.setStatus(
+                            io.opentelemetry.api.trace.StatusCode.ERROR,
+                            failure == null ? "" : failure);
+                }
+            } finally {
+                span.end(endEpochNanos, TimeUnit.NANOSECONDS);
             }
-            span.end(endEpochNanos, TimeUnit.NANOSECONDS);
         }
     }
 }

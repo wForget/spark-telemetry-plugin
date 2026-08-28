@@ -4,8 +4,8 @@ import com.codahale.metrics.MetricRegistry;
 import com.example.spark.telemetry.signal.logs.LogPipeline;
 import com.example.spark.telemetry.signal.metrics.SparkMetricProducer;
 import com.example.spark.telemetry.signal.traces.TaskFilteringSpanProcessor;
-import com.example.spark.telemetry.signal.traces.TaskSpanHandle;
 import com.example.spark.telemetry.signal.traces.TracePipeline;
+import com.example.spark.telemetry.signal.traces.TraceSink;
 import io.opentelemetry.api.logs.Logger;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter;
@@ -67,75 +67,13 @@ public final class TelemetryRuntime implements AutoCloseable {
                 meterProvider,
                 tracerProvider,
                 loggerProvider,
-                new TracePipeline(tracer),
+                new TracePipeline(tracer, config.tracesEnabled()),
                 new LogPipeline(logger, config.minimumLogLevel()));
     }
 
     public LogPipeline logs() { return logs; }
+    public TraceSink traces() { return traces; }
     public boolean isRunning() { return state.get() == State.RUNNING; }
-
-    public void applicationStarted(long epochMillis) {
-        runSafely(new Action() { @Override public void run() { traces.applicationStarted(epochMillis); } });
-    }
-    public void applicationEnded(final long epochMillis) {
-        runSafely(new Action() { @Override public void run() { traces.applicationEnded(epochMillis); } });
-    }
-    public void jobStarted(final int jobId, final int[] stageIds, final long epochMillis) {
-        runSafely(new Action() { @Override public void run() {
-            traces.jobStarted(jobId, stageIds, epochMillis);
-        }});
-    }
-    public void jobEnded(
-            final int jobId,
-            final long endMillis,
-            final String outcome,
-            final String failure) {
-        runSafely(new Action() { @Override public void run() {
-            traces.jobEnded(jobId, endMillis, outcome, failure);
-        }});
-    }
-    public void stageStarted(final int stageId, final int attempt, final long epochMillis) {
-        runSafely(new Action() { @Override public void run() {
-            traces.stageStarted(stageId, attempt, epochMillis);
-        }});
-    }
-    public void stageEnded(
-            final int stageId,
-            final int attempt,
-            final long endMillis,
-            final String outcome,
-            final String failure) {
-        runSafely(new Action() { @Override public void run() {
-            traces.stageEnded(stageId, attempt, endMillis, outcome, failure);
-        }});
-    }
-    public TaskSpanHandle taskTraceStarted(
-            long taskAttemptId,
-            int stageId,
-            int stageAttempt,
-            int partitionId,
-            int attemptNumber,
-            long startEpochNanos) {
-        if (state.get() != State.RUNNING || !config.tracesEnabled()) return null;
-        try {
-            return traces.taskStarted(taskAttemptId, stageId, stageAttempt, partitionId,
-                    attemptNumber, startEpochNanos);
-        } catch (RuntimeException ignored) {
-            return null;
-        } catch (LinkageError ignored) {
-            return null;
-        }
-    }
-    public void taskTraceEnded(
-            final TaskSpanHandle handle,
-            final long endEpochNanos,
-            final String outcome,
-            final String failure,
-            final boolean retain) {
-        runSafely(new Action() { @Override public void run() {
-            traces.taskEnded(handle, endEpochNanos, outcome, failure, retain);
-        }});
-    }
 
     public void close(Duration timeout) {
         if (!state.compareAndSet(State.RUNNING, State.CLOSING)) return;
@@ -170,17 +108,6 @@ public final class TelemetryRuntime implements AutoCloseable {
     @Override
     public void close() {
         close(config.shutdownFlushTimeout());
-    }
-
-    private void runSafely(Action action) {
-        if (state.get() != State.RUNNING) return;
-        try {
-            action.run();
-        } catch (RuntimeException ignored) {
-            // Telemetry is fail-open by contract.
-        } catch (LinkageError ignored) {
-            // Do not let a provided-dependency ABI mismatch fail Spark callbacks.
-        }
     }
 
     private static SdkMeterProvider buildMeterProvider(
@@ -259,6 +186,5 @@ public final class TelemetryRuntime implements AutoCloseable {
         }
     }
 
-    private interface Action { void run(); }
     private enum State { RUNNING, CLOSING, CLOSED }
 }

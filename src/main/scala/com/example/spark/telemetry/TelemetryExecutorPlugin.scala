@@ -63,19 +63,37 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
       val spark = TaskContext.get()
       if (spark != null) {
         val previous = new JHashMap[String, String]()
-        putContext(previous, "spark.stage.id", String.valueOf(spark.stageId()))
-        putContext(previous, "spark.task.attempt.id", String.valueOf(spark.taskAttemptId()))
         val epochStartNanos = System.currentTimeMillis() * 1000000L
-        val span = active.taskTraceStarted(
-          spark.taskAttemptId(), spark.stageId(), spark.stageAttemptNumber(), spark.partitionId(),
-          spark.attemptNumber(), epochStartNanos)
-        if (span != null) {
-          putContext(previous, "trace_id", span.traceId())
-          putContext(previous, "span_id", span.spanId())
+        val monotonicStartNanos = System.nanoTime()
+        var span: TaskSpanHandle = null
+        var installed = false
+        try {
+          putContext(previous, "spark.stage.id", String.valueOf(spark.stageId()))
+          putContext(previous, "spark.task.attempt.id", String.valueOf(spark.taskAttemptId()))
+          span = active.traces().taskStarted(
+            spark.taskAttemptId(), spark.stageId(), spark.stageAttemptNumber(), spark.partitionId(),
+            spark.attemptNumber(), epochStartNanos)
+          if (span != null) {
+            putContext(previous, "trace_id", span.traceId())
+            putContext(previous, "span_id", span.spanId())
+          }
+          val state = new TaskState(
+            spark.taskAttemptId(), monotonicStartNanos, epochStartNanos, span, previous)
+          currentTask.set(state)
+          installed = true
+        } finally {
+          if (!installed) {
+            try {
+              if (span != null) {
+                val duration = Math.max(0L, System.nanoTime() - monotonicStartNanos)
+                span.abandon(epochStartNanos + duration)
+              }
+            } finally {
+              try restoreContext(previous)
+              finally currentTask.remove()
+            }
+          }
         }
-        val state = new TaskState(
-          spark.taskAttemptId(), System.nanoTime(), epochStartNanos, span, previous)
-        currentTask.set(state)
       }
     }
   }
@@ -99,9 +117,10 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
     val state = currentTask.get()
     if (state != null) {
       currentTask.remove()
+      val end = System.nanoTime()
+      val duration = Math.max(0L, end - state.monotonicStartNanos)
+      val endEpochNanos = state.epochStartNanos + duration
       try {
-        val end = System.nanoTime()
-        val duration = Math.max(0L, end - state.monotonicStartNanos)
         val traced = TaskSampler.shouldTrace(
           state.taskAttemptId,
           failed,
@@ -110,14 +129,16 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
           config.taskSampleRate())
         val active = runtime
         if (active != null) {
-          active.taskTraceEnded(
-            state.span, state.epochStartNanos + duration,
+          active.traces().taskEnded(
+            state.span, endEpochNanos,
             if (failed) "failure" else "success", failure, traced)
-        } else if (state.span != null) {
-          state.span.abandon(state.epochStartNanos + duration)
         }
       } finally {
-        restoreContext(state.previousContext)
+        try {
+          if (state.span != null) state.span.abandon(endEpochNanos)
+        } finally {
+          restoreContext(state.previousContext)
+        }
       }
     }
   }

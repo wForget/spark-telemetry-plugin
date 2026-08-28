@@ -6,93 +6,135 @@ import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /** Driver span lifecycle plus independent, sampled task traces. */
-public final class TracePipeline {
+public final class TracePipeline implements TraceSink {
     private static final AttributeKey<Long> SPARK_JOB_ID = AttributeKey.longKey("spark.job.id");
     private static final AttributeKey<Long> SPARK_STAGE_ID = AttributeKey.longKey("spark.stage.id");
-    private static final AttributeKey<Long> SPARK_TASK_ATTEMPT_ID = AttributeKey.longKey("spark.task.attempt.id");
+    private static final AttributeKey<Long> SPARK_TASK_ATTEMPT_ID =
+            AttributeKey.longKey("spark.task.attempt.id");
+
     private final Tracer tracer;
-    private final Map<Integer, Span> jobs = new ConcurrentHashMap<Integer, Span>();
-    private final Map<String, Span> stages = new ConcurrentHashMap<String, Span>();
-    private final Map<Integer, Set<Integer>> stageJobs = new ConcurrentHashMap<Integer, Set<Integer>>();
-    private volatile Span application;
+    private final Map<Integer, Span> jobs = new HashMap<Integer, Span>();
+    private final Map<String, Span> stages = new HashMap<String, Span>();
+    private final Map<Integer, Set<Integer>> stageJobs = new HashMap<Integer, Set<Integer>>();
+    private final ReentrantReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
+    private boolean accepting;
+    private Span application;
 
-    public TracePipeline(Tracer tracer) {
+    public TracePipeline(Tracer tracer, boolean enabled) {
         this.tracer = tracer;
+        this.accepting = enabled;
     }
 
-    public void applicationStarted(long epochMillis) {
-        application = tracer.spanBuilder("spark.application")
-                .setNoParent()
-                .setStartTimestamp(epochMillis, TimeUnit.MILLISECONDS)
-                .startSpan();
+    @Override
+    public void applicationStarted(final long epochMillis) {
+        runDriver(() -> {
+            if (application != null) return;
+            application = tracer.spanBuilder("spark.application")
+                    .setNoParent()
+                    .setStartTimestamp(epochMillis, TimeUnit.MILLISECONDS)
+                    .startSpan();
+        });
     }
 
-    public void applicationEnded(long epochMillis) {
-        Span span = application;
-        if (span != null) {
-            span.end(epochMillis, TimeUnit.MILLISECONDS);
-            application = null;
-        }
-        endOrphans(epochMillis);
+    @Override
+    public void applicationEnded(final long epochMillis) {
+        runDriver(() -> applicationEndedUnsafe(epochMillis));
     }
 
-    public void jobStarted(int jobId, int[] stageIds, long epochMillis) {
-        SpanBuilder builder = tracer.spanBuilder("spark.job")
-                .setAttribute(SPARK_JOB_ID, (long) jobId)
-                .setStartTimestamp(epochMillis, TimeUnit.MILLISECONDS);
-        Span app = application;
-        builder = app == null ? builder.setNoParent() : builder.setParent(Context.root().with(app));
-        jobs.put(jobId, builder.startSpan());
-        for (int stageId : stageIds) {
+    @Override
+    public void jobStarted(final int jobId, final int[] stageIds, final long epochMillis) {
+        runDriver(() -> {
+            if (jobs.containsKey(jobId)) return;
+            SpanBuilder builder = tracer.spanBuilder("spark.job")
+                    .setAttribute(SPARK_JOB_ID, (long) jobId)
+                    .setStartTimestamp(epochMillis, TimeUnit.MILLISECONDS);
+            Span app = application;
+            builder = app == null
+                    ? builder.setNoParent()
+                    : builder.setParent(Context.root().with(app));
+            jobs.put(jobId, builder.startSpan());
+            if (stageIds == null) return;
+            for (int stageId : stageIds) {
+                Set<Integer> owners = stageJobs.get(stageId);
+                if (owners == null) {
+                    owners = new HashSet<Integer>();
+                    stageJobs.put(stageId, owners);
+                }
+                owners.add(jobId);
+            }
+        });
+    }
+
+    @Override
+    public void jobEnded(
+            final int jobId,
+            final long epochMillis,
+            final String outcome,
+            final String failure) {
+        runDriver(() -> {
+            Span span = jobs.remove(jobId);
+            if (span != null) endSafely(span, epochMillis, outcome, failure);
+            Iterator<Map.Entry<Integer, Set<Integer>>> entries = stageJobs.entrySet().iterator();
+            while (entries.hasNext()) {
+                Set<Integer> owners = entries.next().getValue();
+                owners.remove(jobId);
+                if (owners.isEmpty()) entries.remove();
+            }
+        });
+    }
+
+    @Override
+    public void stageStarted(final int stageId, final int attempt, final long epochMillis) {
+        runDriver(() -> {
+            String key = stageKey(stageId, attempt);
+            if (stages.containsKey(key)) return;
+            SpanBuilder builder = tracer.spanBuilder("spark.stage")
+                    .setAttribute(SPARK_STAGE_ID, (long) stageId)
+                    .setAttribute("spark.stage.attempt", (long) attempt)
+                    .setStartTimestamp(epochMillis, TimeUnit.MILLISECONDS);
+            Span app = application;
+            builder = app == null
+                    ? builder.setNoParent()
+                    : builder.setParent(Context.root().with(app));
             Set<Integer> owners = stageJobs.get(stageId);
-            if (owners == null) {
-                Set<Integer> created = ConcurrentHashMap.newKeySet();
-                owners = stageJobs.putIfAbsent(stageId, created);
-                if (owners == null) owners = created;
+            if (owners != null) {
+                for (Integer jobId : owners) {
+                    Span job = jobs.get(jobId);
+                    if (job != null && job.getSpanContext().isValid()) {
+                        builder.addLink(job.getSpanContext());
+                    }
+                }
             }
-            owners.add(jobId);
-        }
+            stages.put(key, builder.startSpan());
+        });
     }
 
-    public void jobEnded(int jobId, long epochMillis, String outcome, String failure) {
-        Span span = jobs.remove(jobId);
-        if (span != null) end(span, epochMillis, outcome, failure);
-        for (Map.Entry<Integer, Set<Integer>> entry : stageJobs.entrySet()) {
-            Set<Integer> owners = entry.getValue();
-            owners.remove(jobId);
-            if (owners.isEmpty()) stageJobs.remove(entry.getKey(), owners);
-        }
+    @Override
+    public void stageEnded(
+            final int stageId,
+            final int attempt,
+            final long epochMillis,
+            final String outcome,
+            final String failure) {
+        runDriver(() -> {
+            Span span = stages.remove(stageKey(stageId, attempt));
+            if (span != null) endSafely(span, epochMillis, outcome, failure);
+        });
     }
 
-    public void stageStarted(int stageId, int attempt, long epochMillis) {
-        SpanBuilder builder = tracer.spanBuilder("spark.stage")
-                .setAttribute(SPARK_STAGE_ID, (long) stageId)
-                .setAttribute("spark.stage.attempt", (long) attempt)
-                .setStartTimestamp(epochMillis, TimeUnit.MILLISECONDS);
-        Span app = application;
-        builder = app == null ? builder.setNoParent() : builder.setParent(Context.root().with(app));
-        Set<Integer> owners = stageJobs.get(stageId);
-        if (owners != null) {
-            for (Integer jobId : owners) {
-                Span job = jobs.get(jobId);
-                if (job != null && job.getSpanContext().isValid()) builder.addLink(job.getSpanContext());
-            }
-        }
-        stages.put(stageKey(stageId, attempt), builder.startSpan());
-    }
-
-    public void stageEnded(int stageId, int attempt, long epochMillis, String outcome, String failure) {
-        Span span = stages.remove(stageKey(stageId, attempt));
-        if (span != null) end(span, epochMillis, outcome, failure);
-    }
-
+    @Override
     public TaskSpanHandle taskStarted(
             long taskAttemptId,
             int stageId,
@@ -100,45 +142,131 @@ public final class TracePipeline {
             int partitionId,
             int attemptNumber,
             long startEpochNanos) {
-        Span span = tracer.spanBuilder("spark.task")
-                .setNoParent()
-                .setAttribute(SPARK_TASK_ATTEMPT_ID, taskAttemptId)
-                .setAttribute(SPARK_STAGE_ID, (long) stageId)
-                .setAttribute("spark.stage.attempt", (long) stageAttempt)
-                .setAttribute("spark.task.partition", (long) partitionId)
-                .setAttribute("spark.task.attempt-number", (long) attemptNumber)
-                .setStartTimestamp(startEpochNanos, TimeUnit.NANOSECONDS)
-                .startSpan();
-        return new TaskSpanHandle(span, span.makeCurrent());
+        Lock operation = lifecycleLock.readLock();
+        operation.lock();
+        Span span = null;
+        Scope scope = null;
+        try {
+            if (!accepting) return null;
+            span = tracer.spanBuilder("spark.task")
+                    .setNoParent()
+                    .setAttribute(SPARK_TASK_ATTEMPT_ID, taskAttemptId)
+                    .setAttribute(SPARK_STAGE_ID, (long) stageId)
+                    .setAttribute("spark.stage.attempt", (long) stageAttempt)
+                    .setAttribute("spark.task.partition", (long) partitionId)
+                    .setAttribute("spark.task.attempt-number", (long) attemptNumber)
+                    .setStartTimestamp(startEpochNanos, TimeUnit.NANOSECONDS)
+                    .startSpan();
+            scope = span.makeCurrent();
+            TaskSpanHandle handle = new TaskSpanHandle(span, scope);
+            span = null;
+            scope = null;
+            return handle;
+        } catch (RuntimeException | LinkageError ignored) {
+            discardStartedTask(span, scope, startEpochNanos);
+            return null;
+        } finally {
+            operation.unlock();
+        }
     }
 
+    @Override
     public void taskEnded(
             TaskSpanHandle handle,
             long endEpochNanos,
             String outcome,
             String failure,
             boolean retain) {
-        if (handle != null) handle.end(endEpochNanos, outcome, failure, retain);
+        if (handle == null) return;
+        Lock operation = lifecycleLock.readLock();
+        operation.lock();
+        try {
+            runSafely(() -> {
+                if (accepting) handle.end(endEpochNanos, outcome, failure, retain);
+                else handle.abandon(endEpochNanos);
+            });
+        } finally {
+            operation.unlock();
+        }
     }
 
-    public void close(long epochMillis) {
-        applicationEnded(epochMillis);
+    public void close(final long epochMillis) {
+        Lock close = lifecycleLock.writeLock();
+        close.lock();
+        try {
+            if (!accepting) return;
+            accepting = false;
+            runSafely(() -> applicationEndedUnsafe(epochMillis));
+        } finally {
+            close.unlock();
+        }
+    }
+
+    private void runDriver(Runnable action) {
+        Lock operation = lifecycleLock.writeLock();
+        operation.lock();
+        try {
+            if (!accepting) return;
+            runSafely(action);
+        } finally {
+            operation.unlock();
+        }
+    }
+
+    private void applicationEndedUnsafe(long epochMillis) {
+        endOrphans(epochMillis);
+        Span span = application;
+        application = null;
+        if (span != null) endApplicationSafely(span, epochMillis);
     }
 
     private void endOrphans(long epochMillis) {
-        for (Span stage : stages.values()) end(stage, epochMillis, "cancelled", "application stopped");
-        stages.clear();
-        for (Span job : jobs.values()) end(job, epochMillis, "cancelled", "application stopped");
-        jobs.clear();
-        stageJobs.clear();
+        try {
+            for (Span stage : stages.values()) {
+                endSafely(stage, epochMillis, "cancelled", "application stopped");
+            }
+        } finally {
+            stages.clear();
+        }
+        try {
+            for (Span job : jobs.values()) {
+                endSafely(job, epochMillis, "cancelled", "application stopped");
+            }
+        } finally {
+            jobs.clear();
+            stageJobs.clear();
+        }
     }
 
-    private static void end(Span span, long epochMillis, String outcome, String failure) {
-        span.setAttribute("outcome", outcome);
-        if (!"success".equals(outcome)) span.setStatus(StatusCode.ERROR, safe(failure));
-        span.end(epochMillis, TimeUnit.MILLISECONDS);
+    private static void discardStartedTask(Span span, Scope scope, long epochNanos) {
+        if (scope != null) runSafely(() -> scope.close());
+        if (span != null) {
+            runSafely(() -> span.setAttribute(TaskFilteringSpanProcessor.RETAIN_TASK, false));
+            runSafely(() -> span.end(epochNanos, TimeUnit.NANOSECONDS));
+        }
+    }
+
+    private static void endApplicationSafely(Span span, long epochMillis) {
+        runSafely(() -> span.end(epochMillis, TimeUnit.MILLISECONDS));
+    }
+
+    private static void endSafely(
+            Span span, long epochMillis, String outcome, String failure) {
+        runSafely(() -> {
+            span.setAttribute("outcome", outcome);
+            if (!"success".equals(outcome)) span.setStatus(StatusCode.ERROR, safe(failure));
+        });
+        runSafely(() -> span.end(epochMillis, TimeUnit.MILLISECONDS));
     }
 
     private static String safe(String value) { return value == null ? "" : value; }
     private static String stageKey(int stageId, int attempt) { return stageId + ":" + attempt; }
+
+    private static void runSafely(Runnable action) {
+        try {
+            action.run();
+        } catch (RuntimeException | LinkageError ignored) {
+            // Telemetry is fail-open by contract.
+        }
+    }
 }
