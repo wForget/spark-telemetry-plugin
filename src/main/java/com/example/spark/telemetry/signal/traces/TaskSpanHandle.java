@@ -1,4 +1,4 @@
-package com.example.spark.telemetry.runtime;
+package com.example.spark.telemetry.signal.traces;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Scope;

@@ -1,4 +1,4 @@
-package com.example.spark.telemetry.runtime;
+package com.example.spark.telemetry.signal.metrics;
 
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.LongCounter;
@@ -9,7 +9,7 @@ import io.opentelemetry.api.metrics.Meter;
 import java.util.concurrent.TimeUnit;
 
 /** Fixed, bounded-cardinality metric instruments. */
-final class MetricPipeline {
+public final class MetricPipeline {
     private final LongCounter jobsCompleted;
     private final LongCounter stagesCompleted;
     private final LongCounter tasksCompleted;
@@ -21,7 +21,7 @@ final class MetricPipeline {
     private final LongUpDownCounter activeTasks;
     private final LongUpDownCounter activeExecutors;
 
-    MetricPipeline(Meter meter) {
+    public MetricPipeline(Meter meter) {
         jobsCompleted = counter(meter, "spark.jobs.completed", "Completed Spark jobs");
         stagesCompleted = counter(meter, "spark.stages.completed", "Completed Spark stages");
         tasksCompleted = counter(meter, "spark.tasks.completed", "Completed Spark tasks");
@@ -34,29 +34,29 @@ final class MetricPipeline {
         activeExecutors = upDown(meter, "spark.executors.active", "Active Spark executors");
     }
 
-    void jobStarted() { activeJobs.add(1); }
-    void jobEnded(long durationMillis, String outcome) {
+    public void jobStarted() { activeJobs.add(1); }
+    public void jobEnded(long durationMillis, String outcome) {
         activeJobs.add(-1);
         Attributes attributes = outcome(outcome);
         jobsCompleted.add(1, attributes);
         jobDuration.record(Math.max(0L, durationMillis), attributes);
     }
-    void stageStarted() { activeStages.add(1); }
-    void stageEnded(long durationMillis, String outcome) {
+    public void stageStarted() { activeStages.add(1); }
+    public void stageEnded(long durationMillis, String outcome) {
         activeStages.add(-1);
         Attributes attributes = outcome(outcome);
         stagesCompleted.add(1, attributes);
         stageDuration.record(Math.max(0L, durationMillis), attributes);
     }
-    void taskStarted() { activeTasks.add(1); }
-    void taskEnded(long durationNanos, String outcome) {
+    public void taskStarted() { activeTasks.add(1); }
+    public void taskEnded(long durationNanos, String outcome) {
         activeTasks.add(-1);
         Attributes attributes = outcome(outcome);
         tasksCompleted.add(1, attributes);
         taskDuration.record(TimeUnit.NANOSECONDS.toMillis(Math.max(0L, durationNanos)), attributes);
     }
-    void executorAdded() { activeExecutors.add(1); }
-    void executorRemoved() { activeExecutors.add(-1); }
+    public void executorAdded() { activeExecutors.add(1); }
+    public void executorRemoved() { activeExecutors.add(-1); }
 
     private static Attributes outcome(String outcome) {
         return Attributes.builder().put("outcome", outcome == null ? "unknown" : outcome).build();

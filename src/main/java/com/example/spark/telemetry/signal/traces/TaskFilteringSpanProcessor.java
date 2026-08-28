@@ -1,4 +1,4 @@
-package com.example.spark.telemetry.runtime;
+package com.example.spark.telemetry.signal.traces;
 
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.context.Context;
@@ -8,11 +8,11 @@ import io.opentelemetry.sdk.trace.ReadableSpan;
 import io.opentelemetry.sdk.trace.SpanProcessor;
 
 /** Tail-admission gate: normal task spans are filtered before the only bounded export queue. */
-final class TaskFilteringSpanProcessor implements SpanProcessor {
+public final class TaskFilteringSpanProcessor implements SpanProcessor {
     static final AttributeKey<Boolean> RETAIN_TASK = AttributeKey.booleanKey("spark.telemetry.task.retained");
     private final SpanProcessor delegate;
 
-    TaskFilteringSpanProcessor(SpanProcessor delegate) {
+    public TaskFilteringSpanProcessor(SpanProcessor delegate) {
         this.delegate = delegate;
     }
 

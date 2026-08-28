@@ -2,8 +2,9 @@ package com.example.spark.telemetry
 
 import java.util.{HashMap => JHashMap, Map => JMap}
 
-import com.example.spark.telemetry.instrumentation.Log4j2TelemetryBridge
-import com.example.spark.telemetry.runtime.{ResourceIdentity, TaskSampler, TaskSpanHandle, TelemetryRuntime}
+import com.example.spark.telemetry.runtime.{ResourceIdentity, TelemetryRuntime}
+import com.example.spark.telemetry.signal.logs.Log4j2TelemetryBridge
+import com.example.spark.telemetry.signal.traces.{TaskSampler, TaskSpanHandle}
 import org.apache.logging.log4j.ThreadContext
 import org.apache.spark.TaskContext
 import org.apache.spark.api.plugin.{ExecutorPlugin, PluginContext}

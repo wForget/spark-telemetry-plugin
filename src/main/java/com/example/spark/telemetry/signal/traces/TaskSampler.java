@@ -1,4 +1,4 @@
-package com.example.spark.telemetry.runtime;
+package com.example.spark.telemetry.signal.traces;
 
 /** Stable task-id sampler: failures and slow tasks are always retained. */
 public final class TaskSampler {

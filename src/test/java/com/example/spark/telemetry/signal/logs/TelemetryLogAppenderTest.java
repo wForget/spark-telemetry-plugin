@@ -1,4 +1,4 @@
-package com.example.spark.telemetry.instrumentation;
+package com.example.spark.telemetry.signal.logs;
 
 import org.junit.jupiter.api.Test;
 

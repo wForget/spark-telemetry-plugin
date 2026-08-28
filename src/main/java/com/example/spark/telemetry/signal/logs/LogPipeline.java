@@ -1,4 +1,4 @@
-package com.example.spark.telemetry.runtime;
+package com.example.spark.telemetry.signal.logs;
 
 import io.opentelemetry.api.logs.LogRecordBuilder;
 import io.opentelemetry.api.logs.Logger;
@@ -14,7 +14,7 @@ public final class LogPipeline {
     private final Logger logger;
     private final TelemetryLogLevel minimumLevel;
 
-    LogPipeline(Logger logger, TelemetryLogLevel minimumLevel) {
+    public LogPipeline(Logger logger, TelemetryLogLevel minimumLevel) {
         this.logger = logger;
         this.minimumLevel = minimumLevel;
     }

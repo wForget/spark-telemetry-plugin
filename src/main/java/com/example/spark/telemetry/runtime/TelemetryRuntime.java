@@ -1,5 +1,10 @@
 package com.example.spark.telemetry.runtime;
 
+import com.example.spark.telemetry.signal.logs.LogPipeline;
+import com.example.spark.telemetry.signal.metrics.MetricPipeline;
+import com.example.spark.telemetry.signal.traces.TaskFilteringSpanProcessor;
+import com.example.spark.telemetry.signal.traces.TaskSpanHandle;
+import com.example.spark.telemetry.signal.traces.TracePipeline;
 import io.opentelemetry.api.logs.Logger;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.Tracer;

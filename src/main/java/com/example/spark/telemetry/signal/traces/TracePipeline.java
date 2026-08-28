@@ -1,4 +1,4 @@
-package com.example.spark.telemetry.runtime;
+package com.example.spark.telemetry.signal.traces;
 
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /** Driver span lifecycle plus independent, sampled task traces. */
-final class TracePipeline {
+public final class TracePipeline {
     private static final AttributeKey<Long> SPARK_JOB_ID = AttributeKey.longKey("spark.job.id");
     private static final AttributeKey<Long> SPARK_STAGE_ID = AttributeKey.longKey("spark.stage.id");
     private static final AttributeKey<Long> SPARK_TASK_ATTEMPT_ID = AttributeKey.longKey("spark.task.attempt.id");
@@ -23,18 +23,18 @@ final class TracePipeline {
     private final Map<Integer, Set<Integer>> stageJobs = new ConcurrentHashMap<Integer, Set<Integer>>();
     private volatile Span application;
 
-    TracePipeline(Tracer tracer) {
+    public TracePipeline(Tracer tracer) {
         this.tracer = tracer;
     }
 
-    void applicationStarted(long epochMillis) {
+    public void applicationStarted(long epochMillis) {
         application = tracer.spanBuilder("spark.application")
                 .setNoParent()
                 .setStartTimestamp(epochMillis, TimeUnit.MILLISECONDS)
                 .startSpan();
     }
 
-    void applicationEnded(long epochMillis) {
+    public void applicationEnded(long epochMillis) {
         Span span = application;
         if (span != null) {
             span.end(epochMillis, TimeUnit.MILLISECONDS);
@@ -43,7 +43,7 @@ final class TracePipeline {
         endOrphans(epochMillis);
     }
 
-    void jobStarted(int jobId, int[] stageIds, long epochMillis) {
+    public void jobStarted(int jobId, int[] stageIds, long epochMillis) {
         SpanBuilder builder = tracer.spanBuilder("spark.job")
                 .setAttribute(SPARK_JOB_ID, (long) jobId)
                 .setStartTimestamp(epochMillis, TimeUnit.MILLISECONDS);
@@ -61,7 +61,7 @@ final class TracePipeline {
         }
     }
 
-    void jobEnded(int jobId, long epochMillis, String outcome, String failure) {
+    public void jobEnded(int jobId, long epochMillis, String outcome, String failure) {
         Span span = jobs.remove(jobId);
         if (span != null) end(span, epochMillis, outcome, failure);
         for (Map.Entry<Integer, Set<Integer>> entry : stageJobs.entrySet()) {
@@ -71,7 +71,7 @@ final class TracePipeline {
         }
     }
 
-    void stageStarted(int stageId, int attempt, long epochMillis) {
+    public void stageStarted(int stageId, int attempt, long epochMillis) {
         SpanBuilder builder = tracer.spanBuilder("spark.stage")
                 .setAttribute(SPARK_STAGE_ID, (long) stageId)
                 .setAttribute("spark.stage.attempt", (long) attempt)
@@ -88,12 +88,12 @@ final class TracePipeline {
         stages.put(stageKey(stageId, attempt), builder.startSpan());
     }
 
-    void stageEnded(int stageId, int attempt, long epochMillis, String outcome, String failure) {
+    public void stageEnded(int stageId, int attempt, long epochMillis, String outcome, String failure) {
         Span span = stages.remove(stageKey(stageId, attempt));
         if (span != null) end(span, epochMillis, outcome, failure);
     }
 
-    TaskSpanHandle taskStarted(
+    public TaskSpanHandle taskStarted(
             long taskAttemptId,
             int stageId,
             int stageAttempt,
@@ -112,7 +112,7 @@ final class TracePipeline {
         return new TaskSpanHandle(span, span.makeCurrent());
     }
 
-    void taskEnded(
+    public void taskEnded(
             TaskSpanHandle handle,
             long endEpochNanos,
             String outcome,
@@ -121,7 +121,7 @@ final class TracePipeline {
         if (handle != null) handle.end(endEpochNanos, outcome, failure, retain);
     }
 
-    void close(long epochMillis) {
+    public void close(long epochMillis) {
         applicationEnded(epochMillis);
     }
 

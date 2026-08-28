@@ -2,8 +2,8 @@ package com.example.spark.telemetry
 
 import java.util.{Collections, Map => JMap}
 
-import com.example.spark.telemetry.instrumentation.Log4j2TelemetryBridge
 import com.example.spark.telemetry.runtime.{DeferredTelemetrySink, ResourceIdentity, TelemetryRuntime}
+import com.example.spark.telemetry.signal.logs.Log4j2TelemetryBridge
 import org.apache.spark.SparkContext
 import org.apache.spark.api.plugin.{DriverPlugin, PluginContext}
 import org.apache.spark.telemetry.config.TelemetryConfig

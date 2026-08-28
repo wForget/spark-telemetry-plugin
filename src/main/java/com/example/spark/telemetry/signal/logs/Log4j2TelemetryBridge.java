@@ -1,6 +1,4 @@
-package com.example.spark.telemetry.instrumentation;
-
-import com.example.spark.telemetry.runtime.LogPipeline;
+package com.example.spark.telemetry.signal.logs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;

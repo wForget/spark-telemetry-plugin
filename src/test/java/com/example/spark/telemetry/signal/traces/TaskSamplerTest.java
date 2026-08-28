@@ -1,4 +1,4 @@
-package com.example.spark.telemetry.runtime;
+package com.example.spark.telemetry.signal.traces;
 
 import org.junit.jupiter.api.Test;
 
