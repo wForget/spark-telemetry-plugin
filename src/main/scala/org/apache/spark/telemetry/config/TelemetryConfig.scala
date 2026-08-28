@@ -52,15 +52,6 @@ final class TelemetryConfig private (
   }
 
   def toExecutorConfiguration(): JMap[String, String] = executorConfiguration
-
-  def otlpSignalEndpoint(signal: String): String = {
-    val standardSignals = Array("metrics", "logs", "traces")
-    var base = trimTrailingSlash(endpoint())
-    standardSignals.iterator.map("/v1/" + _).find(base.endsWith).foreach { suffix =>
-      base = base.substring(0, base.length - suffix.length)
-    }
-    trimTrailingSlash(base) + "/v1/" + signal
-  }
 }
 
 /** Spark-style declarations and construction for [[TelemetryConfig]]. */
@@ -73,7 +64,7 @@ object TelemetryConfig {
   val STRICT: ConfigEntry[Boolean] =
     boolean("strict", "Fail Spark initialization when telemetry configuration is invalid", default = false)
   val ENDPOINT: ConfigEntry[String] =
-    text("endpoint", "Alloy OTLP HTTP base endpoint", "http://127.0.0.1:4318")
+    text("endpoint", "Alloy OTLP gRPC base endpoint", "http://127.0.0.1:4317")
 
   val METRICS_ENABLED: ConfigEntry[Boolean] = signalEnabled("metrics")
   val LOGS_ENABLED: ConfigEntry[Boolean] = signalEnabled("logs")
@@ -275,7 +266,7 @@ object TelemetryConfig {
     validateSignal(conf, strict, TRACES_ENABLED,
       Seq(TRACES_QUEUE_CAPACITY, TASK_SAMPLE_RATE, SLOW_TASK_THRESHOLD))
 
-    validateEndpoint(conf, strict, "OTLP endpoint is not an http(s) URI",
+    validateEndpoint(conf, strict, "OTLP gRPC endpoint is not a safe base http(s) URI",
       Seq(METRICS_ENABLED, LOGS_ENABLED, TRACES_ENABLED), ENDPOINT)
     freeze(conf)
   }
@@ -303,7 +294,7 @@ object TelemetryConfig {
       affectedSignals: Seq[ConfigEntry[Boolean]],
       endpointEntry: ConfigEntry[String]): Unit = {
     try {
-      if (!isHttpEndpoint(value(conf, endpointEntry))) throw new IllegalArgumentException(message)
+      if (!isGrpcBaseEndpoint(value(conf, endpointEntry))) throw new IllegalArgumentException(message)
     } catch {
       case NonFatal(invalid) =>
         if (strict) throw invalid
@@ -359,12 +350,15 @@ object TelemetryConfig {
   private def rawStrict(conf: SparkConf): Boolean =
     conf.getOption(STRICT.key).exists(_.trim.equalsIgnoreCase("true"))
 
-  private def isHttpEndpoint(value: String): Boolean = {
+  private def isGrpcBaseEndpoint(value: String): Boolean = {
     try {
       val uri = new URI(value)
+      val path = uri.getRawPath
+      val port = uri.getPort
       uri.getHost != null && uri.getUserInfo == null && uri.getQuery == null &&
-        uri.getFragment == null &&
-        (uri.getScheme.equalsIgnoreCase("http") || uri.getScheme.equalsIgnoreCase("https"))
+        uri.getFragment == null && (path == null || path.isEmpty || path == "/") &&
+        (port == -1 || (port >= 1 && port <= 65535)) &&
+        (uri.getScheme == "http" || uri.getScheme == "https")
     } catch {
       case _: Exception => false
     }
@@ -372,8 +366,6 @@ object TelemetryConfig {
 
   private def environmentName(key: String): String =
     key.toUpperCase(Locale.ROOT).replace('.', '_').replace('-', '_')
-
-  private def trimTrailingSlash(value: String): String = value.reverse.dropWhile(_ == '/').reverse
 
   private def emptyTo(value: String, fallback: String): String =
     if (value == null || value.trim.isEmpty) fallback else value.trim

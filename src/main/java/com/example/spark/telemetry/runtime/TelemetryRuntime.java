@@ -8,9 +8,9 @@ import com.example.spark.telemetry.signal.traces.TracePipeline;
 import com.example.spark.telemetry.signal.traces.TraceSink;
 import io.opentelemetry.api.logs.Logger;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter;
-import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter;
-import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
+import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter;
+import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter;
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.sdk.logs.SdkLoggerProvider;
 import io.opentelemetry.sdk.logs.SdkLoggerProviderBuilder;
 import io.opentelemetry.sdk.logs.export.BatchLogRecordProcessor;
@@ -115,8 +115,8 @@ public final class TelemetryRuntime implements AutoCloseable {
         SdkMeterProviderBuilder builder = SdkMeterProvider.builder().setResource(identity.metricResource());
         if (config.metricsEnabled() && sparkMetrics != null) {
             builder.registerMetricProducer(new SparkMetricProducer(sparkMetrics));
-            OtlpHttpMetricExporter otlpExporter = OtlpHttpMetricExporter.builder()
-                    .setEndpoint(config.otlpSignalEndpoint("metrics"))
+            OtlpGrpcMetricExporter otlpExporter = OtlpGrpcMetricExporter.builder()
+                    .setEndpoint(config.endpoint())
                     .setTimeout(config.exportTimeout())
                     .build();
             builder.registerMetricReader(PeriodicMetricReader.builder(otlpExporter)
@@ -130,8 +130,8 @@ public final class TelemetryRuntime implements AutoCloseable {
             TelemetryConfig config, ResourceIdentity identity) {
         SdkTracerProviderBuilder builder = SdkTracerProvider.builder().setResource(identity.detailedResource());
         if (config.tracesEnabled()) {
-            OtlpHttpSpanExporter otlpExporter = OtlpHttpSpanExporter.builder()
-                    .setEndpoint(config.otlpSignalEndpoint("traces"))
+            OtlpGrpcSpanExporter otlpExporter = OtlpGrpcSpanExporter.builder()
+                    .setEndpoint(config.endpoint())
                     .setTimeout(config.exportTimeout())
                     .build();
             BatchSpanProcessor batchProcessor = BatchSpanProcessor.builder(otlpExporter)
@@ -149,8 +149,8 @@ public final class TelemetryRuntime implements AutoCloseable {
             TelemetryConfig config, ResourceIdentity identity) {
         SdkLoggerProviderBuilder builder = SdkLoggerProvider.builder().setResource(identity.detailedResource());
         if (config.logsEnabled()) {
-            OtlpHttpLogRecordExporter otlpExporter = OtlpHttpLogRecordExporter.builder()
-                    .setEndpoint(config.otlpSignalEndpoint("logs"))
+            OtlpGrpcLogRecordExporter otlpExporter = OtlpGrpcLogRecordExporter.builder()
+                    .setEndpoint(config.endpoint())
                     .setTimeout(config.exportTimeout())
                     .build();
             builder.addLogRecordProcessor(BatchLogRecordProcessor.builder(otlpExporter)

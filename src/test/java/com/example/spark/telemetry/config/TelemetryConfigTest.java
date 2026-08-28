@@ -25,17 +25,18 @@ class TelemetryConfigTest {
         assertEquals(0.5d, config.taskSampleRate());
         assertEquals(TelemetryLogLevel.WARN, config.minimumLogLevel());
         assertEquals(Duration.ofSeconds(30), config.slowTaskThreshold());
+        assertEquals("http://127.0.0.1:4317", config.endpoint());
     }
 
     @Test
     void driverMapIsAllowlistedAndImmutable() {
         Map<String, String> spark = new HashMap<String, String>();
         spark.put("spark.telemetry.authorization", "secret");
-        spark.put(TelemetryConfig.ENDPOINT().key(), "http://alloy:4318/");
+        spark.put(TelemetryConfig.ENDPOINT().key(), "http://alloy:4317/");
         TelemetryConfig config = TelemetryConfig.from(spark, new HashMap<String, String>());
 
         assertFalse(config.toExecutorConfiguration().containsKey("spark.telemetry.authorization"));
-        assertEquals("http://alloy:4318/v1/traces", config.otlpSignalEndpoint("traces"));
+        assertEquals("http://alloy:4317/", config.endpoint());
         assertThrows(UnsupportedOperationException.class,
                 () -> config.toExecutorConfiguration().put(TelemetryConfig.ENABLED().key(), "false"));
     }
@@ -68,9 +69,9 @@ class TelemetryConfigTest {
     @Test
     void unsafeEndpointPartsAreNeverPropagated() {
         String[] unsafeEndpoints = {
-                "http://user:secret@alloy:4318",
-                "https://alloy:4318?token=secret",
-                "https://alloy:4318/v1/traces#secret"
+                "http://user:secret@alloy:4317",
+                "https://alloy:4317?token=secret",
+                "https://alloy:4317/#secret"
         };
         for (String endpoint : unsafeEndpoints) {
             Map<String, String> values = new HashMap<String, String>();
@@ -80,20 +81,31 @@ class TelemetryConfigTest {
             assertFalse(config.metricsEnabled());
             assertFalse(config.logsEnabled());
             assertFalse(config.tracesEnabled());
-            assertEquals("http://127.0.0.1:4318", config.endpoint());
+            assertEquals("http://127.0.0.1:4317", config.endpoint());
             assertFalse(config.toExecutorConfiguration().toString().contains("secret"));
         }
     }
 
     @Test
-    void fullSignalEndpointIsNormalizedForEverySignal() {
-        Map<String, String> values = new HashMap<String, String>();
-        values.put(TelemetryConfig.ENDPOINT().key(), "http://alloy:4318/v1/traces");
-        TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
+    void grpcEndpointMustBeABaseUri() {
+        String[] nonBaseEndpoints = {
+                "http://alloy:4317/v1/metrics",
+                "http://alloy:4317/custom",
+                "HTTP://alloy:4317",
+                "http://alloy:0",
+                "http://alloy:65536",
+                "http://alloy:99999"
+        };
+        for (String endpoint : nonBaseEndpoints) {
+            Map<String, String> values = new HashMap<String, String>();
+            values.put(TelemetryConfig.ENDPOINT().key(), endpoint);
+            TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
 
-        assertEquals("http://alloy:4318/v1/metrics", config.otlpSignalEndpoint("metrics"));
-        assertEquals("http://alloy:4318/v1/logs", config.otlpSignalEndpoint("logs"));
-        assertEquals("http://alloy:4318/v1/traces", config.otlpSignalEndpoint("traces"));
+            assertFalse(config.metricsEnabled());
+            assertFalse(config.logsEnabled());
+            assertFalse(config.tracesEnabled());
+            assertEquals("http://127.0.0.1:4317", config.endpoint());
+        }
     }
 
     @Test
@@ -167,7 +179,7 @@ class TelemetryConfigTest {
     void endpointSubstitutionFailsOpenOnlyAffectedSignals() {
         Map<String, String> values = new HashMap<String, String>();
         values.put(TelemetryConfig.ENDPOINT().key(),
-                "http://alloy:4318/${system:spark.telemetry.test.secret}");
+                "http://alloy:4317/${system:spark.telemetry.test.secret}");
 
         TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
 
@@ -175,6 +187,6 @@ class TelemetryConfigTest {
         assertFalse(config.metricsEnabled());
         assertFalse(config.logsEnabled());
         assertFalse(config.tracesEnabled());
-        assertEquals("http://127.0.0.1:4318", config.endpoint());
+        assertEquals("http://127.0.0.1:4317", config.endpoint());
     }
 }

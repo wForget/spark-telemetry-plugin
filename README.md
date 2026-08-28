@@ -1,6 +1,6 @@
 # Spark Unified Telemetry Plugin
 
-Spark Driver / Executor 进程内的 fail-open 遥测插件。Metrics、logs、traces 通过 OTLP HTTP/Protobuf 推送到节点本地 Grafana Alloy。
+Spark Driver / Executor 进程内的 fail-open 遥测插件。Metrics、logs、traces 通过 OTLP gRPC 推送到节点本地 Grafana Alloy。
 
 当前实现对应 [ARCHITECTURE.md](ARCHITECTURE.md) 的 Phase 1 核心 MVP：
 
@@ -40,14 +40,16 @@ mvn -Pspark-4.2 clean verify
 spark-submit \
   --jars /path/to/spark-unified-telemetry-plugin-0.1.0-SNAPSHOT-spark-3.5.9_2.12.jar \
   --conf spark.plugins=com.example.spark.telemetry.UnifiedTelemetryPlugin \
-  --conf spark.telemetry.endpoint=http://127.0.0.1:4318 \
+  --conf spark.telemetry.endpoint=http://127.0.0.1:4317 \
   --conf spark.telemetry.resource.service.name=orders-etl \
   --conf spark.telemetry.resource.service.namespace=data-platform \
   --conf spark.telemetry.resource.deployment.environment=production \
   --class com.example.OrdersJob app.jar
 ```
 
-OTLP base endpoint 会按信号规范化为 `/v1/metrics`、`/v1/logs`、`/v1/traces`。插件不读取 token、authorization header、TLS private key 等 secret 配置，并拒绝所有 `${env:...}`、`${system:...}` 和 Spark 变量替换表达式，避免解析后的秘密进入 Executor 配置或遥测 Resource；认证与持久重试由 Alloy 管理。
+Metrics、logs、traces 共享同一个 OTLP gRPC base endpoint，插件不拼接信号路径。endpoint 只允许 `http://` 或 `https://` 的根 URI。插件不读取 token、authorization header、TLS private key 等 secret 配置，并拒绝所有 `${env:...}`、`${system:...}` 和 Spark 变量替换表达式，避免解析后的秘密进入 Executor 配置或遥测 Resource；认证与持久重试由 Alloy 管理。
+
+从旧版升级时，不能继续使用 OTLP/HTTP 的 `4318` endpoint；请改为 Alloy 实际监听的 OTLP gRPC 端口，本地默认为 `4317`。
 
 ## 配置
 
@@ -57,7 +59,7 @@ OTLP base endpoint 会按信号规范化为 `/v1/metrics`、`/v1/logs`、`/v1/tr
 |---|---:|---|
 | `spark.telemetry.enabled` | `true` | 插件总开关 |
 | `spark.telemetry.strict` | `false` | `true` 时非法配置阻止初始化；默认仅关闭受影响信号 |
-| `spark.telemetry.endpoint` | `http://127.0.0.1:4318` | Alloy OTLP HTTP base endpoint |
+| `spark.telemetry.endpoint` | `http://127.0.0.1:4317` | Alloy OTLP gRPC base endpoint |
 | `spark.telemetry.metrics.enabled` | `true` | metrics 开关 |
 | `spark.telemetry.logs.enabled` | `true` | logs 开关 |
 | `spark.telemetry.traces.enabled` | `true` | traces 开关 |
@@ -88,7 +90,7 @@ docker compose up -d
 docker compose ps
 ```
 
-所有服务均使用 `network_mode: host`，直接共享宿主机网络栈，不再使用 Docker 端口映射和 Compose 服务名解析。远程 Spark 应将 `spark.telemetry.endpoint` 配置为 `http://<compose-host>:4318`。部署到远程机器时应通过防火墙或安全组限制这些端口的访问来源。
+所有服务均使用 `network_mode: host`，直接共享宿主机网络栈，不再使用 Docker 端口映射和 Compose 服务名解析。远程 Spark 应将 `spark.telemetry.endpoint` 配置为 `http://<compose-host>:4317`。部署到远程机器时应通过防火墙或安全组限制这些端口的访问来源。
 
 | Component | Port |
 |---|---|
@@ -100,7 +102,7 @@ docker compose ps
 | Tempo | `3200` |
 | Pyroscope | `4040` |
 
-为避免 host 网络模式下的监听冲突，Tempo 的后端 OTLP gRPC / HTTP 端口调整为 `14317` / `14318`；Spark 仍只需连接 Alloy 的 `4317` / `4318`。Mimir、Loki、Tempo、Pyroscope 的内部 gRPC 端口分别为 `19095`、`19096`、`19097`、`19098`。
+为避免 host 网络模式下的监听冲突，Tempo 的后端 OTLP gRPC / HTTP 端口调整为 `14317` / `14318`；Spark 只连接 Alloy 的 OTLP gRPC `4317`。Mimir、Loki、Tempo、Pyroscope 的内部 gRPC 端口分别为 `19095`、`19096`、`19097`、`19098`。
 
 Grafana 会自动 provision Mimir、Loki、Tempo 和 Pyroscope 数据源，并配置 metrics exemplar、trace 和 log 的跳转关系。当前插件尚未实现 profile 采集，所以 Pyroscope 默认不会出现 Spark profile 数据。
 

@@ -362,12 +362,12 @@ Profile data uses a lower-priority queue. When overloaded, the plugin reduces th
 
 | Signal | Plugin to Alloy | Alloy to backend |
 |---|---|---|
-| Metrics | OTLP HTTP/Protobuf or gRPC | OTLP or Prometheus remote write to Mimir |
-| Logs | OTLP HTTP/Protobuf or gRPC | OTLP/Loki ingestion to Loki |
-| Traces | OTLP HTTP/Protobuf or gRPC | OTLP to Tempo |
+| Metrics | OTLP gRPC | OTLP or Prometheus remote write to Mimir |
+| Logs | OTLP gRPC | OTLP/Loki ingestion to Loki |
+| Traces | OTLP gRPC | OTLP to Tempo |
 | Profiles | Pyroscope HTTP Push | Pyroscope write to Pyroscope |
 
-Metrics, logs, and traces may share one OTLP endpoint. Profiles use a separate logical endpoint until OTLP Profiles is sufficiently mature.
+Metrics, logs, and traces share one OTLP gRPC base endpoint. Profiles use a separate logical endpoint until OTLP Profiles is sufficiently mature.
 
 No custom four-signal envelope is introduced.
 
@@ -432,8 +432,8 @@ Responsibilities:
 Endpoint discovery:
 
 ```text
-Standalone or YARN: http://127.0.0.1:4318
-Kubernetes:          http://<node-host-ip>:4318
+Standalone or YARN: http://127.0.0.1:4317
+Kubernetes:          http://<node-host-ip>:4317
 Profiles:            http://<node-local-alloy>:9999
 ```
 
@@ -477,7 +477,7 @@ Example Spark configuration:
 spark.plugins=com.example.spark.telemetry.UnifiedTelemetryPlugin
 
 spark.telemetry.enabled=true
-spark.telemetry.endpoint=http://node-alloy:4318
+spark.telemetry.endpoint=http://node-alloy:4317
 spark.telemetry.profile.endpoint=http://node-alloy:9999
 
 spark.telemetry.metrics.enabled=true
