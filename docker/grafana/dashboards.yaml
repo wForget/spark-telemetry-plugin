@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: Spark Telemetry
+    orgId: 1
+    folder: Spark Telemetry
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 10
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

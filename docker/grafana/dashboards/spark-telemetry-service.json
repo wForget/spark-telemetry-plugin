@@ -1,0 +1,339 @@
+{
+  "annotations": {"list": []},
+  "description": "Service-level inventory of Spark application runs. Select a service and open a run to inspect its metrics, logs, and traces in the application dashboard.",
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 100,
+      "panels": [],
+      "title": "Service overview · $service",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "description": "Spark application root spans found for the selected service and dashboard time range.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 1},
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {"type": "tempo", "uid": "tempo"},
+          "filters": [],
+          "limit": 1000,
+          "query": "{ resource.service.name =~ \"$service\" && name = \"spark.application\" }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Application runs",
+      "transformations": [
+        {"id": "filterFieldsByName", "options": {"include": {"names": ["traceID"]}}},
+        {"id": "reduce", "options": {"includeTimeField": false, "mode": "reduceFields", "reducers": ["count"]}}
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "description": "Most recent application start in the selected time range.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "dateTimeAsIso"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 1},
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {"type": "tempo", "uid": "tempo"},
+          "filters": [],
+          "limit": 1000,
+          "query": "{ resource.service.name =~ \"$service\" && name = \"spark.application\" }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Latest run",
+      "transformations": [
+        {"id": "filterFieldsByName", "options": {"include": {"names": ["startTime"]}}},
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [{"destinationType": "number", "targetField": "startTime"}],
+            "fields": {}
+          }
+        },
+        {"id": "reduce", "options": {"includeTimeField": false, "mode": "reduceFields", "reducers": ["max"]}}
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "description": "Mean end-to-end duration of application root traces in this service window.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 1},
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["mean"], "fields": "", "values": false},
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {"type": "tempo", "uid": "tempo"},
+          "filters": [],
+          "limit": 1000,
+          "query": "{ resource.service.name =~ \"$service\" && name = \"spark.application\" }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Mean duration",
+      "transformations": [{"id": "filterFieldsByName", "options": {"include": {"names": ["traceDuration"]}}}],
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "description": "Longest application duration in the selected service window.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "orange", "value": null}]},
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 1},
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["max"], "fields": "", "values": false},
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {"type": "tempo", "uid": "tempo"},
+          "filters": [],
+          "limit": 1000,
+          "query": "{ resource.service.name =~ \"$service\" && name = \"spark.application\" }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Longest run",
+      "transformations": [{"id": "filterFieldsByName", "options": {"include": {"names": ["traceDuration"]}}}],
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 6},
+      "id": 101,
+      "panels": [],
+      "title": "Application runs · click Started to open details",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "description": "One row per Spark application root span. The Started link opens the application dashboard with the selected service, application ID, and a 10-second window centered on the root span start.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "custom": {"align": "auto", "cellOptions": {"type": "auto"}, "filterable": true, "inspect": false},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "application"},
+            "properties": [
+              {"id": "displayName", "value": "Run ID"},
+              {"id": "custom.width", "value": 260}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "time"},
+            "properties": [
+              {"id": "displayName", "value": "Started"},
+              {"id": "unit", "value": "dateTimeAsIso"},
+              {"id": "custom.width", "value": 220},
+              {"id": "custom.cellOptions", "value": {"type": "data-links"}},
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "targetBlank": false,
+                    "title": "Open application local-${__data.fields.application:raw}",
+                    "url": "/d/spark-telemetry-overview/spark-application-detail?var-service=${__data.fields[\"service.name\"]:raw}&var-application=${__data.fields.application:raw}&var-traceId=${__data.fields.traceIdHidden:raw}&time=${__value.raw}&time.window=10000"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "duration"},
+            "properties": [
+              {"id": "displayName", "value": "Duration"},
+              {"id": "unit", "value": "ns"},
+              {"id": "custom.width", "value": 150}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "traceIdHidden"},
+            "properties": [
+              {"id": "displayName", "value": "Trace ID"},
+              {"id": "custom.width", "value": 300}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "service.name"},
+            "properties": [{"id": "displayName", "value": "Service"}]
+          }
+        ]
+      },
+      "gridPos": {"h": 16, "w": 24, "x": 0, "y": 7},
+      "id": 5,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false},
+        "showHeader": true,
+        "sortBy": [{"desc": true, "displayName": "Started"}]
+      },
+      "targets": [
+        {
+          "datasource": {"type": "tempo", "uid": "tempo"},
+          "filters": [],
+          "limit": 1000,
+          "query": "{ resource.service.name =~ \"$service\" && name = \"spark.application\" } | select(resource.spark.app.id, resource.spark.app.name)",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "spans"
+        }
+      ],
+      "title": "Application runs",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "format": "regexp",
+            "keepTime": false,
+            "regExp": "/^local-(?<application>[0-9]+)$/",
+            "replace": false,
+            "source": "spark.app.id"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "name": true,
+              "spanID": true,
+              "spark.app.id": true,
+              "spark.app.name": true,
+              "traceName": true,
+              "traceService": true
+            },
+            "includeByName": {},
+            "indexByName": {
+              "service.name": 0,
+              "application": 1,
+              "time": 2,
+              "traceIdHidden": 3,
+              "duration": 4
+            },
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["spark", "service", "applications", "opentelemetry", "telemetry"],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".+",
+        "current": {"text": "telemetry-plugin-signals-smoke", "value": "telemetry-plugin-signals-smoke"},
+        "datasource": {"type": "prometheus", "uid": "mimir"},
+        "definition": "label_values(target_info, job)",
+        "includeAll": true,
+        "label": "Service",
+        "multi": true,
+        "name": "service",
+        "options": [],
+        "query": {"query": "label_values(target_info, job)", "refId": "PrometheusVariableQueryEditor-VariableQuery"},
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {"from": "now-7d", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Spark Service Applications",
+  "uid": "spark-telemetry-service",
+  "version": 1
+}

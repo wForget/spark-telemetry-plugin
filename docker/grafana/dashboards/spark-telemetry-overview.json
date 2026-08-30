@@ -1,0 +1,150 @@
+{
+  "annotations": {"list": []},
+  "description": "Application-level Spark telemetry correlated across plugin metrics, logs, and traces. Open an application from the service dashboard to inherit its exact runtime window.",
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "apps",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Service applications",
+      "tooltip": "Return to the application run list for this service",
+      "type": "link",
+      "url": "/d/spark-telemetry-service/spark-service-applications?var-service=$service&from=now-7d&to=now"
+    }
+  ],
+  "panels": [
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "id": 100, "panels": [], "title": "Application overview · local-$application", "type": "row"},
+    {
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "description": "End-to-end duration of the selected Spark application root trace.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 2, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+      "id": 1,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "targets": [{"datasource": {"type": "tempo", "uid": "tempo"}, "filters": [], "limit": 1, "query": "{ resource.service.name =~ \"$service\" && resource.spark.app.id = \"local-$application\" && name = \"spark.application\" }", "queryType": "traceql", "refId": "A", "tableType": "traces"}],
+      "title": "Application duration", "transformations": [{"id": "filterFieldsByName", "options": {"include": {"names": ["traceDuration"]}}}], "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}, "overrides": []},
+      "description": "Total Spark jobs created by this application.",
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1}, "id": 2,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=\"local_${application}_driver_DAGScheduler_job_allJobs_ratio\",job=~\"$service\"}[$__range]))", "instant": true, "legendFormat": "Jobs", "range": false, "refId": "A"}],
+      "title": "Jobs", "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "description": "Total input bytes read by completed tasks.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "purple", "value": null}]}, "unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1}, "id": 3,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=\"local_${application}_driver_executor_bytesRead_ratio\",job=~\"$service\"}[$__range]))", "instant": true, "legendFormat": "Input", "range": false, "refId": "A"}],
+      "title": "Input read", "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "orange", "value": null}]}}, "overrides": []},
+      "description": "Tasks completed successfully in the selected application.",
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1}, "id": 4,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=\"local_${application}_driver_executor_succeededTasks_ratio\",job=~\"$service\"}[$__range]))", "instant": true, "legendFormat": "Completed tasks", "range": false, "refId": "A"}],
+      "title": "Completed tasks", "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "description": "Error or fatal logs emitted by the selected application driver.",
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1}, "id": 5,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["sum"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "editorMode": "code", "expr": "sum(count_over_time({service_name=~\"$service\",service_instance_id=\"local-$application/driver\"} | detected_level=~\"error|fatal\" [$__range])) or vector(0)", "legendFormat": "Errors", "queryType": "instant", "refId": "A"}],
+      "title": "Error logs", "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "description": "Failed tasks. Successful smoke-test applications show zero.",
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1}, "id": 6,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=\"local_${application}_driver_executor_failedTasks_ratio\",job=~\"$service\"}[$__range])) or vector(0)", "instant": true, "legendFormat": "Failed tasks", "range": false, "refId": "A"}],
+      "title": "Failed tasks", "type": "stat"
+    },
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}, "id": 101, "panels": [], "title": "Execution & scheduler", "type": "row"},
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 12, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": true, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
+      "description": "Concurrent jobs and stages during the application lifetime. Peaks reveal scheduler parallelism and backlog.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}, "id": 7,
+      "interval": "1s",
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_DAGScheduler_job_activeJobs_ratio\",job=~\"$service\"}", "legendFormat": "active jobs", "range": true, "refId": "A"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_DAGScheduler_stage_runningStages_ratio\",job=~\"$service\"}", "legendFormat": "running stages", "range": true, "refId": "B"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_DAGScheduler_stage_waitingStages_ratio\",job=~\"$service\"}", "legendFormat": "waiting stages", "range": true, "refId": "C"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_DAGScheduler_stage_failedStages_ratio\",job=~\"$service\"}", "legendFormat": "failed stages", "range": true, "refId": "D"}],
+      "title": "Scheduler concurrency", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 12, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": true, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "ms"}, "overrides": []},
+      "description": "Cumulative executor runtime compared with JVM GC and shuffle fetch wait time.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}, "id": 8,
+      "interval": "1s",
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_runTime_ratio\",job=~\"$service\"}", "legendFormat": "executor runtime", "range": true, "refId": "A"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_jvmGCTime_ratio\",job=~\"$service\"}", "legendFormat": "GC time", "range": true, "refId": "B"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_shuffleFetchWaitTime_ratio\",job=~\"$service\"}", "legendFormat": "shuffle wait", "range": true, "refId": "C"}],
+      "title": "Executor time breakdown", "type": "timeseries"
+    },
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14}, "id": 102, "panels": [], "title": "Resources & data movement", "type": "row"},
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 12, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": true, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
+      "description": "JVM heap pressure and Spark BlockManager storage use for this application.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15}, "id": 9,
+      "interval": "1s",
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\"}", "legendFormat": "JVM heap", "range": true, "refId": "A"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_BlockManager_memory_memUsed_MB_ratio\",job=~\"$service\"} * 1024 * 1024", "legendFormat": "BlockManager used", "range": true, "refId": "B"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_BlockManager_memory_maxMem_MB_ratio\",job=~\"$service\"} * 1024 * 1024", "legendFormat": "BlockManager max", "range": true, "refId": "C"}],
+      "title": "Memory footprint", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 12, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": true, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
+      "description": "Application input, shuffle traffic, and disk spill. Spill indicates memory pressure during wide transformations.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15}, "id": 10,
+      "interval": "1s",
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_bytesRead_ratio\",job=~\"$service\"}", "legendFormat": "input read", "range": true, "refId": "A"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_shuffleTotalBytesRead_ratio\",job=~\"$service\"}", "legendFormat": "shuffle read", "range": true, "refId": "B"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_shuffleBytesWritten_ratio\",job=~\"$service\"}", "legendFormat": "shuffle written", "range": true, "refId": "C"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_diskBytesSpilled_ratio\",job=~\"$service\"}", "legendFormat": "disk spill", "range": true, "refId": "D"}],
+      "title": "Input, shuffle & spill", "type": "timeseries"
+    },
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23}, "id": 103, "panels": [], "title": "Diagnostics · traces & logs", "type": "row"},
+    {
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "description": "Native Grafana trace traversal for the selected Spark application, including its application, job, stage, and task spans.",
+      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 24}, "id": 11,
+      "options": {},
+      "targets": [{"datasource": {"type": "tempo", "uid": "tempo"}, "filters": [], "limit": 20, "query": "${traceId}", "queryType": "traceql", "refId": "A", "tableType": "traces"}],
+      "title": "Application trace", "type": "traces"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "description": "Driver logs isolated to the selected application instance.",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 38}, "id": 12,
+      "options": {"dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "editorMode": "code", "expr": "{service_name=~\"$service\",service_instance_id=\"local-$application/driver\"}", "queryType": "range", "refId": "A"}],
+      "title": "Application logs", "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["spark", "application", "opentelemetry", "telemetry"],
+  "templating": {"list": [{"allValue": ".+", "current": {"text": "telemetry-plugin-signals-smoke", "value": "telemetry-plugin-signals-smoke"}, "datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values(target_info, job)", "includeAll": true, "label": "Service", "multi": true, "name": "service", "options": [], "query": {"query": "label_values(target_info, job)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 1, "regex": "", "sort": 1, "type": "query"}, {"current": {"text": "1787924164733", "value": "1787924164733"}, "datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values({job=~\"$service\"}, __name__)", "includeAll": false, "label": "Application run (local-…)", "multi": false, "name": "application", "options": [], "query": {"query": "label_values({job=~\"$service\"}, __name__)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "/local_([0-9]+)_driver_DAGScheduler_job_allJobs_ratio/", "sort": 2, "type": "query"}, {"current": {"selected": true, "text": "2e3141c254de1b0ebfdfca40a7d1a7c9", "value": "2e3141c254de1b0ebfdfca40a7d1a7c9"}, "hide": 2, "label": "Trace ID", "name": "traceId", "options": [], "query": "2e3141c254de1b0ebfdfca40a7d1a7c9", "skipUrlSync": false, "type": "textbox"}]},
+  "time": {"from": "now-48h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Spark Application Detail",
+  "uid": "spark-telemetry-overview",
+  "version": 1
+}
