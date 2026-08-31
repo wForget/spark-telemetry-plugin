@@ -97,7 +97,7 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
   override def onTaskSucceeded(): Unit = complete(failed = false, "")
 
   override def onTaskFailed(reason: TaskFailedReason): Unit =
-    complete(failed = true, if (reason == null) "unknown" else reason.toString)
+    complete(failed = true, if (reason == null) "unknown" else reason.toErrorString)
 
   override def shutdown(): Unit = {
     val bridge = logBridge
