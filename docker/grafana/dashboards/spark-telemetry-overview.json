@@ -1,6 +1,6 @@
 {
   "annotations": {"list": []},
-  "description": "Application-level Spark telemetry correlated across plugin metrics, logs, and traces. Open an application from the service dashboard to inspect telemetry from its start time onward.",
+  "description": "Application-level Spark telemetry correlated across plugin metrics, logs, and traces. The service dashboard opens the exact application runtime with five seconds of padding on each side.",
   "editable": false,
   "graphTooltip": 1,
   "id": null,
@@ -15,7 +15,7 @@
       "title": "Service applications",
       "tooltip": "Return to the application run list for this service",
       "type": "link",
-      "url": "/d/spark-telemetry-service/spark-service-applications?var-service=$service&from=now-7d&to=now"
+      "url": "/d/spark-service-executor-memory-preview/spark-service-applications?var-service=$service&from=now-7d&to=now"
     }
   ],
   "panels": [
@@ -100,7 +100,7 @@
     {
       "datasource": {"type": "prometheus", "uid": "mimir"},
       "description": "Top Spark JVMs by sampled maximum heap in the selected time range. Click a bar to open that executor or local-mode driver in the repeated memory row. Applications ending before the first ExecutorMetrics heartbeat can remain at zero.",
-      "fieldConfig": {"defaults": {"color": {"mode": "continuous-YlRd"}, "links": [{"targetBlank": false, "title": "Open ${__field.labels.spark_executor}", "url": "/d/spark-telemetry-overview/spark-application-detail?${service:queryparam}&${application:queryparam}&var-executor=${__field.labels.spark_executor}&var-traceId=$traceId&from=${__from}&to=${__to}"}], "mappings": [], "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"mode": "continuous-YlRd"}, "links": [{"targetBlank": false, "title": "Open ${__field.labels.spark_executor}", "url": "/d/spark-telemetry-executor-memory-preview/spark-application-detail?${service:queryparam}&${application:queryparam}&var-executor=${__field.labels.spark_executor}&var-traceId=$traceId&from=${__from}&to=${__to}"}], "mappings": [], "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
       "gridPos": {"h": 7, "w": 24, "x": 0, "y": 15}, "id": 9,
       "options": {"displayMode": "gradient", "minVizHeight": 16, "minVizWidth": 8, "namePlacement": "auto", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showUnfilled": true, "sizing": "auto", "text": {}},
       "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "topk(10, max by (spark_executor) (max_over_time(label_replace({__name__=~\"local_${application}_.+_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\"}, \"spark_executor\", \"$1\", \"__name__\", \"local_${application}_(.+)_ExecutorMetrics_JVMHeapMemory_ratio\")[$__range:10s])))", "instant": true, "legendFormat": "{{spark_executor}}", "range": false, "refId": "A"}],
@@ -188,7 +188,7 @@
       "title": "Application logs", "type": "logs"
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 41,
   "tags": ["spark", "application", "opentelemetry", "telemetry"],
   "templating": {"list": [{"allValue": ".+", "current": {"text": "telemetry-plugin-signals-smoke", "value": "telemetry-plugin-signals-smoke"}, "datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values(target_info, job)", "includeAll": true, "label": "Service", "multi": true, "name": "service", "options": [], "query": {"query": "label_values(target_info, job)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 1, "regex": "", "sort": 1, "type": "query"}, {"current": {"text": "1787924164733", "value": "1787924164733"}, "datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values({job=~\"$service\"}, __name__)", "includeAll": false, "label": "Application run (local-…)", "multi": false, "name": "application", "options": [], "query": {"query": "label_values({job=~\"$service\"}, __name__)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "/local_([0-9]+)_driver_DAGScheduler_job_allJobs_ratio/", "sort": 2, "type": "query"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values({__name__=~\"local_${application}_.+_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\"}, __name__)", "includeAll": false, "label": "Executors / driver", "multi": true, "name": "executor", "options": [], "query": {"query": "label_values({__name__=~\"local_${application}_.+_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\"}, __name__)", "refId": "PrometheusVariableQueryEditor-Executor"}, "refresh": 2, "regex": "/local_${application}_(.+)_ExecutorMetrics_JVMHeapMemory_ratio/", "sort": 1, "type": "query"}, {"current": {"selected": true, "text": "2e3141c254de1b0ebfdfca40a7d1a7c9", "value": "2e3141c254de1b0ebfdfca40a7d1a7c9"}, "hide": 2, "label": "Trace ID", "name": "traceId", "options": [], "query": "2e3141c254de1b0ebfdfca40a7d1a7c9", "skipUrlSync": false, "type": "textbox"}]},
@@ -196,6 +196,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Spark Application Detail",
-  "uid": "spark-telemetry-overview",
+  "uid": "spark-telemetry-executor-memory-preview",
   "version": 1
 }

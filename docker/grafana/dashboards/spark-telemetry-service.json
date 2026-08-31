@@ -194,7 +194,7 @@
     },
     {
       "datasource": {"type": "tempo", "uid": "tempo"},
-      "description": "One row per Spark application root span. The Started link opens the application dashboard with the selected service, application ID, and a 10-second window centered on the root span start.",
+      "description": "One row per completed Spark application root span. The Started link opens the application dashboard from five seconds before the trace start until five seconds after its calculated end.",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "thresholds"},
@@ -223,7 +223,7 @@
                   {
                     "targetBlank": false,
                     "title": "Open application local-${__data.fields.application:raw}",
-                    "url": "/d/spark-telemetry-overview/spark-application-detail?var-service=${__data.fields[\"service.name\"]:raw}&var-application=${__data.fields.application:raw}&var-executor=driver&var-traceId=${__data.fields.traceIdHidden:raw}&from=${__value.raw}&to=now"
+                    "url": "/d/spark-telemetry-executor-memory-preview/spark-application-detail?var-service=${__data.fields[\"service.name\"]:raw}&var-application=${__data.fields.application:raw}&var-executor=driver&var-traceId=${__data.fields.traceIdHidden:raw}&from=${__data.fields.fromTime:raw}&to=${__data.fields.toTime:raw}"
                   }
                 ]
               }
@@ -247,6 +247,22 @@
           {
             "matcher": {"id": "byName", "options": "service.name"},
             "properties": [{"id": "displayName", "value": "Service"}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "durationMs"},
+            "properties": [{"id": "custom.hidden", "value": true}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "endTime"},
+            "properties": [{"id": "custom.hidden", "value": true}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "fromTime"},
+            "properties": [{"id": "custom.hidden", "value": true}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "toTime"},
+            "properties": [{"id": "custom.hidden", "value": true}]
           }
         ]
       },
@@ -282,6 +298,69 @@
           }
         },
         {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [{"destinationType": "number", "targetField": "Start time"}],
+            "fields": {}
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "durationMs",
+            "binary": {
+              "left": "Duration",
+              "operator": "/",
+              "right": "1000000"
+            },
+            "mode": "binary",
+            "reduce": {"reducer": "sum"},
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "endTime",
+            "binary": {
+              "left": "Start time",
+              "operator": "+",
+              "right": "durationMs"
+            },
+            "mode": "binary",
+            "reduce": {"reducer": "sum"},
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "fromTime",
+            "binary": {
+              "left": "Start time",
+              "operator": "-",
+              "right": "5000"
+            },
+            "mode": "binary",
+            "reduce": {"reducer": "sum"},
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "toTime",
+            "binary": {
+              "left": "endTime",
+              "operator": "+",
+              "right": "5000"
+            },
+            "mode": "binary",
+            "reduce": {"reducer": "sum"},
+            "replaceFields": false
+          }
+        },
+        {
           "id": "organize",
           "options": {
             "excludeByName": {
@@ -298,7 +377,11 @@
               "application": 1,
               "time": 2,
               "traceIdHidden": 3,
-              "duration": 4
+              "duration": 4,
+              "durationMs": 5,
+              "endTime": 6,
+              "fromTime": 7,
+              "toTime": 8
             },
             "renameByName": {}
           }
@@ -307,7 +390,7 @@
       "type": "table"
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 41,
   "tags": ["spark", "service", "applications", "opentelemetry", "telemetry"],
   "templating": {
@@ -334,6 +417,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Spark Service Applications",
-  "uid": "spark-telemetry-service",
+  "uid": "spark-service-executor-memory-preview",
   "version": 1
 }
