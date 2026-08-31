@@ -7,6 +7,7 @@ import cn.wangz.spark.telemetry.signal.logs.Log4j2TelemetryBridge
 import cn.wangz.spark.telemetry.signal.metrics.SparkMetricRegistry
 import cn.wangz.spark.telemetry.signal.traces.{TaskSampler, TaskSpanHandle}
 import org.apache.logging.log4j.ThreadContext
+import org.apache.spark.SparkConf
 import org.apache.spark.TaskContext
 import org.apache.spark.api.plugin.{ExecutorPlugin, PluginContext}
 import org.apache.spark.TaskFailedReason
@@ -18,11 +19,15 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
   @volatile private var config: TelemetryConfig = _
   @volatile private var runtime: TelemetryRuntime = _
   @volatile private var logBridge: Log4j2TelemetryBridge = _
+  @volatile private var sparkConf: SparkConf = _
+  @volatile private var executorId: String = _
 
   override def init(context: PluginContext, extraConf: JMap[String, String]): Unit = {
     var strictRequested = false
     try {
       val conf = context.conf()
+      sparkConf = conf
+      executorId = context.executorID()
       strictRequested = TelemetryConfig.strictRequested(conf, false)
       strictRequested = TelemetryConfig.strictRequested(extraConf, strictRequested)
       val parsed = TelemetryConfig.fromDriver(extraConf).withApplication(
@@ -30,24 +35,12 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
         conf.get("spark.app.id", "unknown"))
       config = parsed
       if (parsed.enabled()) {
-        val isLocalExecutor = context.executorID() == "driver"
-        val identity = ResourceIdentity.executor(
-          parsed,
-          conf.get("spark.app.id", "unknown"),
-          context.executorID())
-        // Local mode shares the Driver's SparkEnv and MetricsSystem. The Driver runtime already
-        // exports that registry, so a second reader here would duplicate every metric.
-        val sparkMetrics =
-          if (parsed.metricsEnabled() && !isLocalExecutor)
-            SparkMetricRegistry.current()
-          else
-            null
-        val created = TelemetryRuntime.create(parsed, identity, sparkMetrics)
-        runtime = created
-        // Local mode shares the Driver's Log4j context. Installing a second root appender would
-        // duplicate every record and tag one copy with the not-yet-assigned "unknown/driver" ID.
-        if (parsed.logCaptureEnabled() && !isLocalExecutor) {
-          logBridge = Log4j2TelemetryBridge.install("executor-" + context.executorID(), created.logs())
+        val applicationId = conf.get("spark.app.id", parsed.applicationId())
+        // In local mode Spark constructs the ExecutorPlugin before SparkContext assigns spark.app.id.
+        // Defer runtime creation until the first task, by which point SparkContext has updated the
+        // shared SparkConf. Otherwise every local task trace is permanently tagged app.id=unknown.
+        if (applicationId != "unknown") {
+          startRuntime(parsed, applicationId, context.executorID())
         }
       }
     } catch {
@@ -61,7 +54,7 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
   }
 
   override def onTaskStart(): Unit = safely {
-    val active = runtime
+    val active = ensureRuntime()
     if (active != null && active.isRunning()) {
       val spark = TaskContext.get()
       if (spark != null) {
@@ -130,11 +123,12 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
           duration,
           config.slowTaskThreshold().toNanos,
           config.taskSampleRate())
+        val slow = duration >= config.slowTaskThreshold().toNanos
         val active = runtime
         if (active != null) {
           active.traces().taskEnded(
             state.span, endEpochNanos,
-            if (failed) "failure" else "success", failure, traced)
+            if (failed) "failure" else "success", failure, traced, slow)
         }
       } finally {
         try {
@@ -164,6 +158,45 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
     try action catch {
       case NonFatal(_) => ()
       case _: LinkageError => ()
+    }
+  }
+
+  private def ensureRuntime(): TelemetryRuntime = {
+    var active = runtime
+    if (active == null && config != null && config.enabled()) this.synchronized {
+      active = runtime
+      if (active == null) {
+        val applicationId = sparkConf.get("spark.app.id", config.applicationId())
+        if (applicationId != "unknown") {
+          startRuntime(config, applicationId, executorId)
+          active = runtime
+        }
+      }
+    }
+    active
+  }
+
+  private def startRuntime(
+      parsed: TelemetryConfig,
+      applicationId: String,
+      currentExecutorId: String): Unit = {
+    val finalConfig = parsed.withApplication(parsed.applicationName(), applicationId)
+    config = finalConfig
+    val isLocalExecutor = currentExecutorId == "driver"
+    val identity = ResourceIdentity.executor(finalConfig, applicationId, currentExecutorId)
+    // Local mode shares the Driver's SparkEnv and MetricsSystem. The Driver runtime already
+    // exports that registry, so a second reader here would duplicate every metric.
+    val sparkMetrics =
+      if (finalConfig.metricsEnabled() && !isLocalExecutor)
+        SparkMetricRegistry.current()
+      else
+        null
+    val created = TelemetryRuntime.create(finalConfig, identity, sparkMetrics)
+    runtime = created
+    // Local mode also shares the Driver's Log4j context. The Driver bridge captures task logs
+    // after onTaskStart installs trace/span context, so a second root appender would duplicate them.
+    if (finalConfig.logCaptureEnabled() && !isLocalExecutor) {
+      logBridge = Log4j2TelemetryBridge.install("executor-" + currentExecutorId, created.logs())
     }
   }
 

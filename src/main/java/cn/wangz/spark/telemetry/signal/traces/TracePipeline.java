@@ -176,13 +176,14 @@ public final class TracePipeline implements TraceSink {
             long endEpochNanos,
             String outcome,
             String failure,
-            boolean retain) {
+            boolean retain,
+            boolean slow) {
         if (handle == null) return;
         Lock operation = lifecycleLock.readLock();
         operation.lock();
         try {
             runSafely(() -> {
-                if (accepting) handle.end(endEpochNanos, outcome, failure, retain);
+                if (accepting) handle.end(endEpochNanos, outcome, failure, retain, slow);
                 else handle.abandon(endEpochNanos);
             });
         } finally {

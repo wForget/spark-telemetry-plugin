@@ -3,6 +3,7 @@ package cn.wangz.spark.telemetry.signal.traces;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.trace.ReadWriteSpan;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,7 +65,7 @@ class TracePipelineTest {
         assertNull(traces.taskStarted(4L, 3, 0, 0, 0, 7L));
         assertEquals(4, processor.started());
 
-        traces.taskEnded(task, 8L, "success", "", true);
+        traces.taskEnded(task, 8L, "success", "", true, false);
         assertEquals(4, processor.ended());
         assertFalse(Span.current().getSpanContext().isValid());
         provider.shutdown().join(1, TimeUnit.SECONDS);
@@ -81,6 +83,22 @@ class TracePipelineTest {
         assertNull(linkageFailure.taskStarted(1L, 1, 0, 0, 0, 1L));
     }
 
+    @Test
+    void taskSpanRecordsSlowClassification() {
+        CountingSpanProcessor processor = new CountingSpanProcessor();
+        SdkTracerProvider provider = provider(processor);
+        TracePipeline traces = new TracePipeline(provider.get("test"), true);
+
+        TaskSpanHandle task = traces.taskStarted(3L, 2, 0, 7, 0, 4L);
+        traces.taskEnded(task, 8L, "success", "", true, true);
+
+        assertEquals(
+                Boolean.TRUE,
+                processor.lastEnded().getAttribute(
+                        AttributeKey.booleanKey("spark.telemetry.task.slow")));
+        provider.shutdown().join(1, TimeUnit.SECONDS);
+    }
+
     private static SdkTracerProvider provider(SpanProcessor processor) {
         return SdkTracerProvider.builder().addSpanProcessor(processor).build();
     }
@@ -88,6 +106,7 @@ class TracePipelineTest {
     private static final class CountingSpanProcessor implements SpanProcessor {
         private final AtomicInteger started = new AtomicInteger();
         private final AtomicInteger ended = new AtomicInteger();
+        private final AtomicReference<ReadableSpan> lastEnded = new AtomicReference<ReadableSpan>();
 
         @Override public void onStart(Context parentContext, ReadWriteSpan span) {
             started.incrementAndGet();
@@ -95,7 +114,10 @@ class TracePipelineTest {
 
         @Override public boolean isStartRequired() { return true; }
 
-        @Override public void onEnd(ReadableSpan span) { ended.incrementAndGet(); }
+        @Override public void onEnd(ReadableSpan span) {
+            lastEnded.set(span);
+            ended.incrementAndGet();
+        }
 
         @Override public boolean isEndRequired() { return true; }
 
@@ -109,6 +131,7 @@ class TracePipelineTest {
 
         private int started() { return started.get(); }
         private int ended() { return ended.get(); }
+        private ReadableSpan lastEnded() { return lastEnded.get(); }
     }
 
     private static final class FailingTracer implements Tracer {

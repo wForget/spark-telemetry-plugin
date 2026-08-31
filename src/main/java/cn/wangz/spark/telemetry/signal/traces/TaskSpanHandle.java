@@ -21,10 +21,10 @@ public final class TaskSpanHandle {
     public String spanId() { return span.getSpanContext().getSpanId(); }
 
     public void abandon(long endEpochNanos) {
-        end(endEpochNanos, "cancelled", "telemetry runtime stopped", false);
+        end(endEpochNanos, "cancelled", "telemetry runtime stopped", false, false);
     }
 
-    void end(long endEpochNanos, String outcome, String failure, boolean retain) {
+    void end(long endEpochNanos, String outcome, String failure, boolean retain, boolean slow) {
         if (!ended.compareAndSet(false, true)) return;
         try {
             scope.close();
@@ -32,6 +32,7 @@ public final class TaskSpanHandle {
             try {
                 span.setAttribute("outcome", outcome == null ? "unknown" : outcome);
                 span.setAttribute(TaskFilteringSpanProcessor.RETAIN_TASK, retain);
+                span.setAttribute("spark.telemetry.task.slow", slow);
                 if (!"success".equals(outcome)) {
                     span.setStatus(
                             io.opentelemetry.api.trace.StatusCode.ERROR,

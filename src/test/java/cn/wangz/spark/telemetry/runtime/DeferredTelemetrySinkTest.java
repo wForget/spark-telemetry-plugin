@@ -164,7 +164,8 @@ class DeferredTelemetrySinkTest {
                 long endEpochNanos,
                 String outcome,
                 String failure,
-                boolean retain) {
+                boolean retain,
+                boolean slow) {
         }
 
         private List<String> events() {

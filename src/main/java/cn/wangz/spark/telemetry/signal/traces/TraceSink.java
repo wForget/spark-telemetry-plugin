@@ -31,5 +31,6 @@ public interface TraceSink {
             long endEpochNanos,
             String outcome,
             String failure,
-            boolean retain);
+            boolean retain,
+            boolean slow);
 }

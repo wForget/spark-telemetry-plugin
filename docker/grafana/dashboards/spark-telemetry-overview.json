@@ -1,6 +1,6 @@
 {
   "annotations": {"list": []},
-  "description": "Application-level Spark telemetry correlated across plugin metrics, logs, and traces. Open an application from the service dashboard to inherit its exact runtime window.",
+  "description": "Application-level Spark telemetry correlated across plugin metrics, logs, and traces. Open an application from the service dashboard to inspect telemetry from its start time onward.",
   "editable": false,
   "graphTooltip": 1,
   "id": null,
@@ -67,13 +67,13 @@
       "title": "Error logs", "type": "stat"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "datasource": {"type": "tempo", "uid": "tempo"},
       "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
-      "description": "Failed tasks. Successful smoke-test applications show zero.",
+      "description": "Failed task attempts counted from retained ERROR task spans. Spark ExecutorSource does not expose an executor.failedTasks metric.",
       "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1}, "id": 6,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=\"local_${application}_driver_executor_failedTasks_ratio\",job=~\"$service\"}[$__range])) or vector(0)", "instant": true, "legendFormat": "Failed tasks", "range": false, "refId": "A"}],
-      "title": "Failed tasks", "type": "stat"
+      "targets": [{"datasource": {"type": "tempo", "uid": "tempo"}, "limit": 20, "metricsQueryType": "instant", "query": "{ resource.service.name =~ \"$service\" && resource.spark.app.id = \"local-$application\" && name = \"spark.task\" && status = error } | count_over_time()", "queryType": "traceql", "refId": "A", "tableType": "metrics"}],
+      "title": "Failed task attempts", "type": "stat"
     },
     {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}, "id": 101, "panels": [], "title": "Execution & scheduler", "type": "row"},
     {
@@ -96,33 +96,84 @@
       "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_runTime_ratio\",job=~\"$service\"}", "legendFormat": "executor runtime", "range": true, "refId": "A"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_jvmGCTime_ratio\",job=~\"$service\"}", "legendFormat": "GC time", "range": true, "refId": "B"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_shuffleFetchWaitTime_ratio\",job=~\"$service\"}", "legendFormat": "shuffle wait", "range": true, "refId": "C"}],
       "title": "Executor time breakdown", "type": "timeseries"
     },
-    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14}, "id": 102, "panels": [], "title": "Resources & data movement", "type": "row"},
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14}, "id": 102, "panels": [], "title": "Executor / driver memory overview", "type": "row"},
     {
       "datasource": {"type": "prometheus", "uid": "mimir"},
-      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 12, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": true, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
-      "description": "JVM heap pressure and Spark BlockManager storage use for this application.",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15}, "id": 9,
+      "description": "Top Spark JVMs by sampled maximum heap in the selected time range. Click a bar to open that executor or local-mode driver in the repeated memory row. Applications ending before the first ExecutorMetrics heartbeat can remain at zero.",
+      "fieldConfig": {"defaults": {"color": {"mode": "continuous-YlRd"}, "links": [{"targetBlank": false, "title": "Open ${__field.labels.spark_executor}", "url": "/d/spark-telemetry-overview/spark-application-detail?${service:queryparam}&${application:queryparam}&var-executor=${__field.labels.spark_executor}&var-traceId=$traceId&from=${__from}&to=${__to}"}], "mappings": [], "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 15}, "id": 9,
+      "options": {"displayMode": "gradient", "minVizHeight": 16, "minVizWidth": 8, "namePlacement": "auto", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showUnfilled": true, "sizing": "auto", "text": {}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "topk(10, max by (spark_executor) (max_over_time(label_replace({__name__=~\"local_${application}_.+_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\"}, \"spark_executor\", \"$1\", \"__name__\", \"local_${application}_(.+)_ExecutorMetrics_JVMHeapMemory_ratio\")[$__range:10s])))", "instant": true, "legendFormat": "{{spark_executor}}", "range": false, "refId": "A"}],
+      "title": "Spark JVMs · sampled max heap", "type": "bargauge"
+    },
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22}, "id": 104, "panels": [], "repeat": "executor", "title": "Memory · $executor", "type": "row"},
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "description": "Executor-local JVM memory pools. Process RSS is an optional Linux process-tree ceiling and is not summed with the JVM pools.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 8, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "stepAfter", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "auto", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": [{"matcher": {"id": "byFrameRefID", "options": "A"}, "properties": [{"id": "color", "value": {"fixedColor": "blue", "mode": "fixed"}}]}, {"matcher": {"id": "byFrameRefID", "options": "B"}, "properties": [{"id": "color", "value": {"fixedColor": "purple", "mode": "fixed"}}]}, {"matcher": {"id": "byFrameRefID", "options": "C"}, "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]}, {"matcher": {"id": "byFrameRefID", "options": "D"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]}, {"matcher": {"id": "byFrameRefID", "options": "E"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}, {"id": "custom.lineStyle", "value": {"dash": [10, 10], "fill": "dash"}}]}]},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 23}, "id": 13,
       "interval": "1s",
       "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\"}", "legendFormat": "JVM heap", "range": true, "refId": "A"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_BlockManager_memory_memUsed_MB_ratio\",job=~\"$service\"} * 1024 * 1024", "legendFormat": "BlockManager used", "range": true, "refId": "B"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_BlockManager_memory_maxMem_MB_ratio\",job=~\"$service\"} * 1024 * 1024", "legendFormat": "BlockManager max", "range": true, "refId": "C"}],
-      "title": "Memory footprint", "type": "timeseries"
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\"}[$__interval]))", "legendFormat": "JVM heap", "range": true, "refId": "A"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_JVMOffHeapMemory_ratio\",job=~\"$service\"}[$__interval]))", "legendFormat": "JVM non-heap", "range": true, "refId": "B"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_DirectPoolMemory_ratio\",job=~\"$service\"}[$__interval]))", "legendFormat": "Direct pool", "range": true, "refId": "C"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_MappedPoolMemory_ratio\",job=~\"$service\"}[$__interval]))", "legendFormat": "Mapped pool", "range": true, "refId": "D"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_ProcessTreeJVMRSSMemory_ratio\",job=~\"$service\"}[$__interval])) > 0", "legendFormat": "Process RSS", "range": true, "refId": "E"}],
+      "title": "JVM & process footprint · $executor", "type": "timeseries"
     },
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "description": "Executor-local Spark execution and storage memory. Unified metrics are omitted because they duplicate these four components.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 28, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "stepAfter", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "auto", "spanNulls": false, "stacking": {"group": "A", "mode": "normal"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 23}, "id": 14,
+      "interval": "1s",
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_OnHeapExecutionMemory_ratio\",job=~\"$service\"}[$__interval]))", "legendFormat": "on-heap execution", "range": true, "refId": "A"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_OnHeapStorageMemory_ratio\",job=~\"$service\"}[$__interval]))", "legendFormat": "on-heap storage", "range": true, "refId": "B"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_OffHeapExecutionMemory_ratio\",job=~\"$service\"}[$__interval]))", "legendFormat": "off-heap execution", "range": true, "refId": "C"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_OffHeapStorageMemory_ratio\",job=~\"$service\"}[$__interval]))", "legendFormat": "off-heap storage", "range": true, "refId": "D"}],
+      "title": "Spark managed memory · $executor", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "description": "Maximum executor-local values observed in the selected dashboard time range.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}, "unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 31}, "id": 15,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value_and_name", "wideLayout": true},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\"}[$__range]))", "instant": true, "legendFormat": "Peak JVM heap", "range": false, "refId": "A"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_ProcessTreeJVMRSSMemory_ratio\",job=~\"$service\"}[$__range])) > 0", "instant": true, "legendFormat": "Peak process RSS", "range": false, "refId": "B"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_DirectPoolMemory_ratio\",job=~\"$service\"}[$__range]))", "instant": true, "legendFormat": "Peak direct pool", "range": false, "refId": "C"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_MappedPoolMemory_ratio\",job=~\"$service\"}[$__range]))", "instant": true, "legendFormat": "Peak mapped pool", "range": false, "refId": "D"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(max_over_time({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_OnHeapStorageMemory_ratio\",job=~\"$service\"}[$__range]))", "instant": true, "legendFormat": "Peak on-heap storage", "range": false, "refId": "E"}],
+      "title": "Selected-range peaks · $executor", "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "mimir"},
+      "description": "GC collection-time rate derived from the cumulative ExecutorMetrics TotalGCTime gauge. This is a pressure proxy, not exact stop-the-world time, and can exceed 100% for overlapping collectors. The 10% line is a diagnostic reference.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 12, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "stepAfter", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "line"}}, "decimals": 1, "mappings": [], "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 10}]}, "unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 31}, "id": 16,
+      "interval": "1s",
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "max(clamp_min(rate({__name__=~\"local_${application}_${executor:regex}_ExecutorMetrics_TotalGCTime_ratio\",job=~\"$service\"}[$__rate_interval]), 0)) / 10", "legendFormat": "GC time", "range": true, "refId": "A"}],
+      "title": "GC pressure · $executor", "type": "timeseries"
+    },
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 38}, "id": 105, "panels": [], "title": "Data movement & spill", "type": "row"},
     {
       "datasource": {"type": "prometheus", "uid": "mimir"},
       "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 12, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": true, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
       "description": "Application input, shuffle traffic, and disk spill. Spill indicates memory pressure during wide transformations.",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15}, "id": 10,
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 39}, "id": 10,
       "interval": "1s",
       "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
       "targets": [{"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_bytesRead_ratio\",job=~\"$service\"}", "legendFormat": "input read", "range": true, "refId": "A"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_shuffleTotalBytesRead_ratio\",job=~\"$service\"}", "legendFormat": "shuffle read", "range": true, "refId": "B"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_shuffleBytesWritten_ratio\",job=~\"$service\"}", "legendFormat": "shuffle written", "range": true, "refId": "C"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "editorMode": "code", "expr": "{__name__=\"local_${application}_driver_executor_diskBytesSpilled_ratio\",job=~\"$service\"}", "legendFormat": "disk spill", "range": true, "refId": "D"}],
       "title": "Input, shuffle & spill", "type": "timeseries"
     },
-    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23}, "id": 103, "panels": [], "title": "Diagnostics · traces & logs", "type": "row"},
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 47}, "id": 103, "panels": [], "title": "Diagnostics · traces & logs", "type": "row"},
+    {
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "description": "Retained task attempts that failed or exceeded the plugin's configured slow-task threshold. Each row is an independent executor task trace.",
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "filterable": true, "inspect": false}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 48}, "id": 17,
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "Started"}]},
+      "targets": [{"datasource": {"type": "tempo", "uid": "tempo"}, "limit": 100, "metricsQueryType": "range", "query": "{ resource.service.name =~ \"$service\" && resource.spark.app.id = \"local-$application\" && name = \"spark.task\" && (status = error || span.spark.telemetry.task.slow = true) } | select(span.spark.task.partition, span.spark.task.attempt-number, span.spark.telemetry.task.slow, span.outcome)", "queryType": "traceql", "refId": "A", "tableType": "spans"}],
+      "title": "Failed & slow task attempts",
+      "transformations": [{"id": "organize", "options": {"excludeByName": {"name": true, "traceName": true, "traceService": true}, "includeByName": {}, "indexByName": {"Span ID": 0, "Start time": 1, "outcome": 2, "status": 3, "spark.task.partition": 4, "spark.task.attempt-number": 5, "spark.telemetry.task.slow": 6}, "renameByName": {"Span ID": "Task trace", "Start time": "Started", "outcome": "Outcome", "spark.task.attempt-number": "Attempt", "spark.task.partition": "Partition", "spark.telemetry.task.slow": "Slow", "status": "Status"}}}],
+      "type": "table"
+    },
     {
       "datasource": {"type": "tempo", "uid": "tempo"},
       "fieldConfig": {"defaults": {}, "overrides": []},
-      "description": "Native Grafana trace traversal for the selected Spark application, including its application, job, stage, and task spans.",
-      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 24}, "id": 11,
+      "description": "Native Grafana trace traversal for the driver-owned application, job, and stage spans. Executor task attempts are shown in the dedicated table above.",
+      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 56}, "id": 11,
       "options": {},
       "targets": [{"datasource": {"type": "tempo", "uid": "tempo"}, "filters": [], "limit": 20, "query": "${traceId}", "queryType": "traceql", "refId": "A", "tableType": "traces"}],
       "title": "Application trace", "type": "traces"
@@ -131,7 +182,7 @@
       "datasource": {"type": "loki", "uid": "loki"},
       "fieldConfig": {"defaults": {}, "overrides": []},
       "description": "Driver logs isolated to the selected application instance.",
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 38}, "id": 12,
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 70}, "id": 12,
       "options": {"dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
       "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "editorMode": "code", "expr": "{service_name=~\"$service\",service_instance_id=\"local-$application/driver\"}", "queryType": "range", "refId": "A"}],
       "title": "Application logs", "type": "logs"
@@ -140,7 +191,7 @@
   "refresh": "30s",
   "schemaVersion": 41,
   "tags": ["spark", "application", "opentelemetry", "telemetry"],
-  "templating": {"list": [{"allValue": ".+", "current": {"text": "telemetry-plugin-signals-smoke", "value": "telemetry-plugin-signals-smoke"}, "datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values(target_info, job)", "includeAll": true, "label": "Service", "multi": true, "name": "service", "options": [], "query": {"query": "label_values(target_info, job)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 1, "regex": "", "sort": 1, "type": "query"}, {"current": {"text": "1787924164733", "value": "1787924164733"}, "datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values({job=~\"$service\"}, __name__)", "includeAll": false, "label": "Application run (local-…)", "multi": false, "name": "application", "options": [], "query": {"query": "label_values({job=~\"$service\"}, __name__)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "/local_([0-9]+)_driver_DAGScheduler_job_allJobs_ratio/", "sort": 2, "type": "query"}, {"current": {"selected": true, "text": "2e3141c254de1b0ebfdfca40a7d1a7c9", "value": "2e3141c254de1b0ebfdfca40a7d1a7c9"}, "hide": 2, "label": "Trace ID", "name": "traceId", "options": [], "query": "2e3141c254de1b0ebfdfca40a7d1a7c9", "skipUrlSync": false, "type": "textbox"}]},
+  "templating": {"list": [{"allValue": ".+", "current": {"text": "telemetry-plugin-signals-smoke", "value": "telemetry-plugin-signals-smoke"}, "datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values(target_info, job)", "includeAll": true, "label": "Service", "multi": true, "name": "service", "options": [], "query": {"query": "label_values(target_info, job)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 1, "regex": "", "sort": 1, "type": "query"}, {"current": {"text": "1787924164733", "value": "1787924164733"}, "datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values({job=~\"$service\"}, __name__)", "includeAll": false, "label": "Application run (local-…)", "multi": false, "name": "application", "options": [], "query": {"query": "label_values({job=~\"$service\"}, __name__)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "/local_([0-9]+)_driver_DAGScheduler_job_allJobs_ratio/", "sort": 2, "type": "query"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values({__name__=~\"local_${application}_.+_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\"}, __name__)", "includeAll": false, "label": "Executors / driver", "multi": true, "name": "executor", "options": [], "query": {"query": "label_values({__name__=~\"local_${application}_.+_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\"}, __name__)", "refId": "PrometheusVariableQueryEditor-Executor"}, "refresh": 2, "regex": "/local_${application}_(.+)_ExecutorMetrics_JVMHeapMemory_ratio/", "sort": 1, "type": "query"}, {"current": {"selected": true, "text": "2e3141c254de1b0ebfdfca40a7d1a7c9", "value": "2e3141c254de1b0ebfdfca40a7d1a7c9"}, "hide": 2, "label": "Trace ID", "name": "traceId", "options": [], "query": "2e3141c254de1b0ebfdfca40a7d1a7c9", "skipUrlSync": false, "type": "textbox"}]},
   "time": {"from": "now-48h", "to": "now"},
   "timepicker": {},
   "timezone": "browser",

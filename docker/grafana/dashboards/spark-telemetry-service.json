@@ -223,7 +223,7 @@
                   {
                     "targetBlank": false,
                     "title": "Open application local-${__data.fields.application:raw}",
-                    "url": "/d/spark-telemetry-overview/spark-application-detail?var-service=${__data.fields[\"service.name\"]:raw}&var-application=${__data.fields.application:raw}&var-traceId=${__data.fields.traceIdHidden:raw}&time=${__value.raw}&time.window=10000"
+                    "url": "/d/spark-telemetry-overview/spark-application-detail?var-service=${__data.fields[\"service.name\"]:raw}&var-application=${__data.fields.application:raw}&var-executor=driver&var-traceId=${__data.fields.traceIdHidden:raw}&from=${__value.raw}&to=now"
                   }
                 ]
               }
