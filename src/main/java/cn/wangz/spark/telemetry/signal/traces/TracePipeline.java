@@ -175,7 +175,7 @@ public final class TracePipeline implements TraceSink {
             TaskSpanHandle handle,
             long endEpochNanos,
             String outcome,
-            String failure,
+            TaskFailure failure,
             boolean retain,
             boolean slow) {
         if (handle == null) return;

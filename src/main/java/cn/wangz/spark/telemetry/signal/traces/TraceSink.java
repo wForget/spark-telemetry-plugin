@@ -30,7 +30,7 @@ public interface TraceSink {
             TaskSpanHandle handle,
             long endEpochNanos,
             String outcome,
-            String failure,
+            TaskFailure failure,
             boolean retain,
             boolean slow);
 }

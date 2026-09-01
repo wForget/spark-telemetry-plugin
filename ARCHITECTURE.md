@@ -333,6 +333,12 @@ Default task policy:
 - Tasks exceeding the slow threshold: retain 100%
 - Normal successful tasks: sample between 0.1% and 1%
 
+Failed task attempts set span status to `ERROR` and expose `error.type` plus structured Spark
+failure attributes. `ExceptionFailure` records the standard OpenTelemetry `exception` event. If
+Spark cannot preserve the original `Throwable`, the event is reconstructed from Spark's retained
+exception type, message, and full stack trace; non-exception failure reasons use a
+`spark.task.failure` event instead of a synthetic exception.
+
 Creating one retained span for every task is prohibited by default because large jobs can produce millions of tasks.
 
 ### 9.4 Profiles

@@ -78,4 +78,4 @@ Metric Resource 刻意不包含 app/job/stage/task/executor/trace/span ID；它�
 
 Metrics pipeline 不创建或维护插件指标，也不再从 Spark listener / task callback 记录 job、stage、task、executor 指标。每个导出周期直接读取当前 JVM 的 Spark Dropwizard registry，因此 Spark 后续动态注册的指标也会被投递；非数值 Gauge 会被忽略，单个 Gauge 读取失败不会影响其余指标。Local 模式的 Driver 和 Executor 共享同一个 `MetricsSystem`，只由 Driver runtime 投递一次。
 
-Executor task span 是独立 trace，并通过 Spark ID 查询关联；公开 Spark Plugin API 无法安全地把 Driver span context 注入每个 task，因此不伪造 parent。为了让执行期间的日志获得真实 trace/span ID，task 开始时会创建 recording span，结束时才根据失败、慢任务和稳定采样规则决定是否送入有界导出队列；因此未保留普通任务的日志可能引用一个未导出的 trace，这是尾部保留策略的预期权衡。
+Executor task span 是独立 trace，并通过 Spark ID 查询关联；公开 Spark Plugin API 无法安全地把 Driver span context 注入每个 task，因此不伪造 parent。为了让执行期间的日志获得真实 trace/span ID，task 开始时会创建 recording span，结束时才根据失败、慢任务和稳定采样规则决定是否送入有界导出队列；因此未保留普通任务的日志可能引用一个未导出的 trace，这是尾部保留策略的预期权衡。失败 task span 设置 `ERROR` status 和结构化 Spark failure 属性；`ExceptionFailure` 使用标准 OTel `exception` event，Spark 无法保留原始 Throwable 时则从其保留的类型、消息和完整堆栈构造等价事件。非异常失败原因使用 `spark.task.failure` event，不伪造 Throwable。

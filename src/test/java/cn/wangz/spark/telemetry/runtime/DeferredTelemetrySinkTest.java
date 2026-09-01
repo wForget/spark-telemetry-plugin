@@ -2,6 +2,7 @@ package cn.wangz.spark.telemetry.runtime;
 
 import cn.wangz.spark.telemetry.signal.traces.TaskSpanHandle;
 import cn.wangz.spark.telemetry.signal.traces.TraceSink;
+import cn.wangz.spark.telemetry.signal.traces.TaskFailure;
 import org.apache.spark.telemetry.config.TelemetryConfig;
 import org.junit.jupiter.api.Test;
 
@@ -163,7 +164,7 @@ class DeferredTelemetrySinkTest {
                 TaskSpanHandle handle,
                 long endEpochNanos,
                 String outcome,
-                String failure,
+                TaskFailure failure,
                 boolean retain,
                 boolean slow) {
         }

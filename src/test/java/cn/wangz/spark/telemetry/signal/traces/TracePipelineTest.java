@@ -2,6 +2,7 @@ package cn.wangz.spark.telemetry.signal.traces;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
+import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.context.Context;
@@ -10,6 +11,7 @@ import io.opentelemetry.sdk.trace.ReadWriteSpan;
 import io.opentelemetry.sdk.trace.ReadableSpan;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.SpanProcessor;
+import io.opentelemetry.sdk.trace.data.EventData;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
@@ -21,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TracePipelineTest {
     @Test
@@ -65,7 +68,7 @@ class TracePipelineTest {
         assertNull(traces.taskStarted(4L, 3, 0, 0, 0, 7L));
         assertEquals(4, processor.started());
 
-        traces.taskEnded(task, 8L, "success", "", true, false);
+        traces.taskEnded(task, 8L, "success", null, true, false);
         assertEquals(4, processor.ended());
         assertFalse(Span.current().getSpanContext().isValid());
         provider.shutdown().join(1, TimeUnit.SECONDS);
@@ -90,12 +93,123 @@ class TracePipelineTest {
         TracePipeline traces = new TracePipeline(provider.get("test"), true);
 
         TaskSpanHandle task = traces.taskStarted(3L, 2, 0, 7, 0, 4L);
-        traces.taskEnded(task, 8L, "success", "", true, true);
+        traces.taskEnded(task, 8L, "success", null, true, true);
 
         assertEquals(
                 Boolean.TRUE,
                 processor.lastEnded().getAttribute(
                         AttributeKey.booleanKey("spark.telemetry.task.slow")));
+        assertEquals(StatusCode.UNSET,
+                processor.lastEnded().toSpanData().getStatus().getStatusCode());
+        assertTrue(processor.lastEnded().toSpanData().getEvents().isEmpty());
+        provider.shutdown().join(1, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void taskSpanRecordsThrowableAsStandardExceptionEvent() {
+        CountingSpanProcessor processor = new CountingSpanProcessor();
+        SdkTracerProvider provider = provider(processor);
+        TracePipeline traces = new TracePipeline(provider.get("test"), true);
+        IllegalStateException exception = new IllegalStateException("intentional failure");
+
+        TaskSpanHandle task = traces.taskStarted(3L, 2, 0, 7, 0, 4L);
+        traces.taskEnded(task, 8L, "failure", new TaskFailure(
+                "ExceptionFailure",
+                "org.apache.spark.ExceptionFailure",
+                exception.toString(),
+                true,
+                exception,
+                exception.getClass().getName(),
+                exception.getMessage(),
+                "ignored fallback stack"), true, false);
+
+        ReadableSpan ended = processor.lastEnded();
+        assertEquals(StatusCode.ERROR, ended.toSpanData().getStatus().getStatusCode());
+        assertEquals(
+                "intentional failure",
+                ended.toSpanData().getStatus().getDescription());
+        assertEquals(
+                "java.lang.IllegalStateException",
+                ended.getAttribute(AttributeKey.stringKey("error.type")));
+        assertEquals(
+                "ExceptionFailure",
+                ended.getAttribute(AttributeKey.stringKey("spark.task.failure.type")));
+        assertEquals(
+                Boolean.TRUE,
+                ended.getAttribute(AttributeKey.booleanKey(
+                        "spark.task.failure.counts-towards-limit")));
+        assertEquals(1, ended.toSpanData().getEvents().size());
+        EventData event = ended.toSpanData().getEvents().get(0);
+        assertEquals("exception", event.getName());
+        assertEquals(
+                exception.getClass().getName(),
+                event.getAttributes().get(AttributeKey.stringKey("exception.type")));
+        assertEquals(
+                exception.getMessage(),
+                event.getAttributes().get(AttributeKey.stringKey("exception.message")));
+        assertTrue(event.getAttributes()
+                .get(AttributeKey.stringKey("exception.stacktrace"))
+                .contains("TracePipelineTest"));
+        provider.shutdown().join(1, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void taskSpanFallsBackToPreservedExceptionFieldsWithoutThrowable() {
+        CountingSpanProcessor processor = new CountingSpanProcessor();
+        SdkTracerProvider provider = provider(processor);
+        TracePipeline traces = new TracePipeline(provider.get("test"), true);
+        StringBuilder oversizedStack = new StringBuilder();
+        for (int index = 0; index < 70_000; index++) oversizedStack.append('s');
+
+        TaskSpanHandle task = traces.taskStarted(3L, 2, 0, 7, 0, 4L);
+        traces.taskEnded(task, 8L, "failure", new TaskFailure(
+                "ExceptionFailure",
+                "org.apache.spark.ExceptionFailure",
+                "full error string must not become the status description",
+                true,
+                null,
+                "example.UnserializableException",
+                "short message",
+                oversizedStack.toString()), true, false);
+
+        ReadableSpan ended = processor.lastEnded();
+        assertEquals(
+                "short message",
+                ended.toSpanData().getStatus().getDescription());
+        assertEquals(1, ended.toSpanData().getEvents().size());
+        EventData event = ended.toSpanData().getEvents().get(0);
+        assertEquals("exception", event.getName());
+        assertEquals(
+                "example.UnserializableException",
+                event.getAttributes().get(AttributeKey.stringKey("exception.type")));
+        assertEquals(
+                TaskFailure.MAX_STACK_TRACE_LENGTH,
+                event.getAttributes()
+                        .get(AttributeKey.stringKey("exception.stacktrace"))
+                        .length());
+        provider.shutdown().join(1, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void nonExceptionTaskFailureUsesSparkFailureEvent() {
+        CountingSpanProcessor processor = new CountingSpanProcessor();
+        SdkTracerProvider provider = provider(processor);
+        TracePipeline traces = new TracePipeline(provider.get("test"), true);
+
+        TaskSpanHandle task = traces.taskStarted(3L, 2, 0, 7, 0, 4L);
+        traces.taskEnded(task, 8L, "failure", new TaskFailure(
+                "FetchFailed", "org.apache.spark.FetchFailed",
+                "shuffle block unavailable", true,
+                null, "", "", ""), true, false);
+
+        ReadableSpan ended = processor.lastEnded();
+        assertEquals(StatusCode.ERROR, ended.toSpanData().getStatus().getStatusCode());
+        assertEquals("shuffle block unavailable",
+                ended.toSpanData().getStatus().getDescription());
+        assertEquals("org.apache.spark.FetchFailed",
+                ended.getAttribute(AttributeKey.stringKey("error.type")));
+        assertEquals(1, ended.toSpanData().getEvents().size());
+        assertEquals("spark.task.failure", ended.toSpanData().getEvents().get(0).getName());
         provider.shutdown().join(1, TimeUnit.SECONDS);
     }
 

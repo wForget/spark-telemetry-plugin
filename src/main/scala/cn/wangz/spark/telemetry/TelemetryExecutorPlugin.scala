@@ -5,12 +5,12 @@ import java.util.{HashMap => JHashMap, Map => JMap}
 import cn.wangz.spark.telemetry.runtime.{ResourceIdentity, TelemetryRuntime}
 import cn.wangz.spark.telemetry.signal.logs.Log4j2TelemetryBridge
 import cn.wangz.spark.telemetry.signal.metrics.SparkMetricRegistry
-import cn.wangz.spark.telemetry.signal.traces.{TaskSampler, TaskSpanHandle}
+import cn.wangz.spark.telemetry.signal.traces.{TaskFailure, TaskSampler, TaskSpanHandle}
 import org.apache.logging.log4j.ThreadContext
 import org.apache.spark.SparkConf
 import org.apache.spark.TaskContext
 import org.apache.spark.api.plugin.{ExecutorPlugin, PluginContext}
-import org.apache.spark.TaskFailedReason
+import org.apache.spark.{ExceptionFailure, TaskFailedReason}
 import org.apache.spark.telemetry.config.TelemetryConfig
 import scala.util.control.NonFatal
 
@@ -94,10 +94,10 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
     }
   }
 
-  override def onTaskSucceeded(): Unit = complete(failed = false, "")
+  override def onTaskSucceeded(): Unit = complete(failed = false, failure = null)
 
   override def onTaskFailed(reason: TaskFailedReason): Unit =
-    complete(failed = true, if (reason == null) "unknown" else reason.toErrorString)
+    complete(failed = true, safeFailureDetails(reason))
 
   override def shutdown(): Unit = {
     val bridge = logBridge
@@ -109,7 +109,7 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
     currentTask.remove()
   }
 
-  private def complete(failed: Boolean, failure: String): Unit = safely {
+  private def complete(failed: Boolean, failure: TaskFailure): Unit = safely {
     val state = currentTask.get()
     if (state != null) {
       currentTask.remove()
@@ -139,6 +139,52 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
       }
     }
   }
+
+  private def failureDetails(reason: TaskFailedReason): TaskFailure = {
+    if (reason == null) {
+      new TaskFailure(
+        "UnknownReason", "org.apache.spark.UnknownReason", "unknown",
+        true, null, "", "", "")
+    } else reason match {
+      case exceptionFailure: ExceptionFailure =>
+        new TaskFailure(
+          failureType(exceptionFailure),
+          failureClass(exceptionFailure),
+          exceptionFailure.description,
+          exceptionFailure.countTowardsTaskFailures,
+          exceptionFailure.exception.orNull,
+          exceptionFailure.className,
+          exceptionFailure.description,
+          Option(exceptionFailure.fullStackTrace)
+            .filter(_.nonEmpty)
+            .getOrElse(exceptionFailure.toErrorString))
+      case other =>
+        new TaskFailure(
+          failureType(other),
+          failureClass(other),
+          other.toErrorString,
+          other.countTowardsTaskFailures,
+          null, "", "", "")
+    }
+  }
+
+  private def safeFailureDetails(reason: TaskFailedReason): TaskFailure = {
+    try failureDetails(reason) catch {
+      case NonFatal(_) => unknownFailure
+      case _: LinkageError => unknownFailure
+    }
+  }
+
+  private def unknownFailure: TaskFailure =
+    new TaskFailure(
+      "UnknownReason", "org.apache.spark.TaskFailedReason", "task failed",
+      true, null, "", "", "")
+
+  private def failureType(reason: TaskFailedReason): String =
+    reason.getClass.getSimpleName.stripSuffix("$")
+
+  private def failureClass(reason: TaskFailedReason): String =
+    reason.getClass.getName.stripSuffix("$")
 
   private def putContext(previous: JHashMap[String, String], key: String, value: String): Unit = {
     previous.put(key, ThreadContext.get(key))

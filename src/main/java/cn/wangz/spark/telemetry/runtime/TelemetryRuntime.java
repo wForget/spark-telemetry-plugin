@@ -19,6 +19,7 @@ import io.opentelemetry.sdk.metrics.SdkMeterProviderBuilder;
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.SdkTracerProviderBuilder;
+import io.opentelemetry.sdk.trace.SpanLimits;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 
 import java.time.Duration;
@@ -128,7 +129,10 @@ public final class TelemetryRuntime implements AutoCloseable {
 
     private static SdkTracerProvider buildTracerProvider(
             TelemetryConfig config, ResourceIdentity identity) {
-        SdkTracerProviderBuilder builder = SdkTracerProvider.builder().setResource(identity.detailedResource());
+        SdkTracerProviderBuilder builder = SdkTracerProvider.builder()
+                .setResource(identity.detailedResource())
+                // Bounds exception.stacktrace produced by Span.recordException(Throwable).
+                .setSpanLimits(SpanLimits.builder().setMaxAttributeValueLength(65536).build());
         if (config.tracesEnabled()) {
             OtlpGrpcSpanExporter otlpExporter = OtlpGrpcSpanExporter.builder()
                     .setEndpoint(config.endpoint())
