@@ -74,7 +74,7 @@ Metrics、logs、traces 共享同一个 OTLP gRPC base endpoint，插件不拼�
 | `spark.telemetry.export.timeout` | `10s` | 单次 exporter timeout |
 | `spark.telemetry.shutdown.flush-timeout` | `3s` | 所有信号共享的最终 flush 截止时间 |
 
-Metric Resource 刻意不包含 app/job/stage/task/executor/trace/span ID；它只增加一个不暴露 Spark ID 的 JVM 级 `service.instance.id`，用于避免多个 cumulative writer 相互 reset。若 Alloy 会把该属性提升为长期 Mimir label，应在 Alloy 侧先按目标维度聚合。Trace/log 使用同一规范化身份模型的详细投影。
+Metric Resource 刻意不包含 app/job/stage/task/executor/trace/span ID；它只增加一个不暴露 Spark ID 的 JVM 级 `service.instance.id`，用于避免多个 cumulative writer 相互 reset。每个 Metric DataPoint 包含进程生命周期内稳定的 `spark.executor.id` 查询维度，Alloy 的 Prometheus exporter 会将其规范化为 Mimir label `spark_executor_id`，而不必把其他 Resource 属性全部提升成时序标签。Trace/log 使用同一规范化身份模型的详细投影。
 
 Metrics pipeline 不创建或维护插件指标，也不再从 Spark listener / task callback 记录 job、stage、task、executor 指标。每个导出周期直接读取当前 JVM 的 Spark Dropwizard registry，因此 Spark 后续动态注册的指标也会被投递；非数值 Gauge 会被忽略，单个 Gauge 读取失败不会影响其余指标。Local 模式的 Driver 和 Executor 共享同一个 `MetricsSystem`，只由 Driver runtime 投递一次。
 

@@ -115,7 +115,8 @@ public final class TelemetryRuntime implements AutoCloseable {
             TelemetryConfig config, ResourceIdentity identity, MetricRegistry sparkMetrics) {
         SdkMeterProviderBuilder builder = SdkMeterProvider.builder().setResource(identity.metricResource());
         if (config.metricsEnabled() && sparkMetrics != null) {
-            builder.registerMetricProducer(new SparkMetricProducer(sparkMetrics));
+            builder.registerMetricProducer(
+                    new SparkMetricProducer(sparkMetrics, identity.metricAttributes()));
             OtlpGrpcMetricExporter otlpExporter = OtlpGrpcMetricExporter.builder()
                     .setEndpoint(config.endpoint())
                     .setTimeout(config.exportTimeout())

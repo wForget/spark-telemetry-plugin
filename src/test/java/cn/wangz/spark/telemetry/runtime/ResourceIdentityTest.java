@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ResourceIdentityTest {
     @Test
-    void metricProjectionExcludesHighCardinalityIdentity() {
+    void metricProjectionSeparatesExecutorDimensionFromWriterResource() {
         TelemetryConfig config = TelemetryConfig.from(
                 new HashMap<String, String>(), new HashMap<String, String>())
                 .withApplication("orders", "application-1");
@@ -19,7 +19,10 @@ class ResourceIdentityTest {
         Resource detailed = identity.detailedResource();
 
         assertNull(metric.getAttribute(io.opentelemetry.api.common.AttributeKey.stringKey("spark.app.id")));
-        assertNull(metric.getAttribute(io.opentelemetry.api.common.AttributeKey.stringKey("spark.executor.id")));
+        assertNull(metric.getAttribute(
+                io.opentelemetry.api.common.AttributeKey.stringKey("spark.executor.id")));
+        assertEquals("12", identity.metricAttributes().get(
+                io.opentelemetry.api.common.AttributeKey.stringKey("spark.executor.id")));
         String metricInstance = metric.getAttribute(
                 io.opentelemetry.api.common.AttributeKey.stringKey("service.instance.id"));
         assertNotNull(metricInstance);

@@ -67,6 +67,11 @@ public final class ResourceIdentity {
         return Resource.create(attributes.build());
     }
 
+    /** Stable metric dimension promoted by Prometheus exporters to {@code spark_executor_id}. */
+    public Attributes metricAttributes() {
+        return Attributes.builder().put("spark.executor.id", executorId).build();
+    }
+
     public Resource detailedResource() {
         AttributesBuilder attributes = stableAttributes();
         attributes.put("service.instance.id", applicationId + "/" + executorId);

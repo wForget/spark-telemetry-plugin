@@ -6,6 +6,8 @@ import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.resources.Resource;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,24 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SparkMetricProducerTest {
+    @Test
+    void attachesStableExecutorDimensionToMetricPoints() {
+        AttributeKey<String> executorId = AttributeKey.stringKey("spark.executor.id");
+        MetricRegistry registry = new MetricRegistry();
+        registry.counter("spark.executor.runningTasks").inc();
+        registry.meter("spark.events").mark();
+
+        Map<String, MetricData> metrics = byName(new SparkMetricProducer(
+                registry, Attributes.of(executorId, "12")).produce(Resource.empty()));
+
+        assertEquals("12", metrics.get("spark.executor.runningTasks")
+                .getLongGaugeData().getPoints().iterator().next().getAttributes().get(executorId));
+        assertEquals("12", metrics.get("spark.events.count")
+                .getLongSumData().getPoints().iterator().next().getAttributes().get(executorId));
+        assertEquals("12", metrics.get("spark.events.rate.mean")
+                .getDoubleGaugeData().getPoints().iterator().next().getAttributes().get(executorId));
+    }
+
     @Test
     void readsCurrentRegistryWithoutCreatingOrCachingInstruments() {
         MetricRegistry registry = new MetricRegistry();

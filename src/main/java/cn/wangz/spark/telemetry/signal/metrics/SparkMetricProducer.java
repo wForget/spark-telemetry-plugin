@@ -44,11 +44,20 @@ public final class SparkMetricProducer implements MetricProducer {
     private static final double NANOS_PER_MILLISECOND = 1_000_000.0d;
 
     private final MetricRegistry registry;
+    private final Attributes pointAttributes;
     private final long processStartEpochNanos;
 
     public SparkMetricProducer(MetricRegistry registry) {
+        this(registry, NO_ATTRIBUTES);
+    }
+
+    public SparkMetricProducer(MetricRegistry registry, Attributes pointAttributes) {
         if (registry == null) throw new IllegalArgumentException("registry must not be null");
+        if (pointAttributes == null) {
+            throw new IllegalArgumentException("pointAttributes must not be null");
+        }
         this.registry = registry;
+        this.pointAttributes = pointAttributes;
         this.processStartEpochNanos = processStartEpochNanos();
     }
 
@@ -148,7 +157,7 @@ public final class SparkMetricProducer implements MetricProducer {
     }
 
     private MetricData longGauge(Resource resource, String name, long value, long now, String unit) {
-        LongPointData point = ImmutableLongPointData.create(0L, now, NO_ATTRIBUTES, value);
+        LongPointData point = ImmutableLongPointData.create(0L, now, pointAttributes, value);
         return ImmutableMetricData.createLongGauge(
                 resource, SCOPE, name, "Spark MetricsSystem registry metric", unit,
                 ImmutableGaugeData.create(Collections.singletonList(point)));
@@ -156,7 +165,7 @@ public final class SparkMetricProducer implements MetricProducer {
 
     private MetricData doubleGauge(
             Resource resource, String name, double value, long now, String unit) {
-        DoublePointData point = ImmutableDoublePointData.create(0L, now, NO_ATTRIBUTES, value);
+        DoublePointData point = ImmutableDoublePointData.create(0L, now, pointAttributes, value);
         return ImmutableMetricData.createDoubleGauge(
                 resource, SCOPE, name, "Spark MetricsSystem registry metric", unit,
                 ImmutableGaugeData.create(Collections.singletonList(point)));
@@ -164,7 +173,7 @@ public final class SparkMetricProducer implements MetricProducer {
 
     private MetricData longSum(Resource resource, String name, long value, long now) {
         LongPointData point = ImmutableLongPointData.create(
-                processStartEpochNanos, now, NO_ATTRIBUTES, value);
+                processStartEpochNanos, now, pointAttributes, value);
         return ImmutableMetricData.createLongSum(
                 resource, SCOPE, name, "Spark MetricsSystem registry metric", "{event}",
                 ImmutableSumData.create(
