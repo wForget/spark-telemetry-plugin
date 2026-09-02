@@ -1,6 +1,6 @@
 {
   "annotations": {"list": []},
-  "description": "Application-level Spark telemetry correlated across plugin metrics, logs, and traces. The service dashboard opens the exact application runtime with five seconds of padding on each side.",
+  "description": "Application-level Spark telemetry correlated across plugin metrics, logs, traces, and profiles. The service dashboard opens the exact application runtime with five seconds of padding on each side.",
   "editable": false,
   "graphTooltip": 1,
   "id": null,
@@ -186,11 +186,23 @@
       "options": {"dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
       "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "editorMode": "code", "expr": "{service_name=~\"$service\",service_instance_id=\"local-$application/driver\"}", "queryType": "range", "refId": "A"}],
       "title": "Application logs", "type": "logs"
+    },
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 80}, "id": 106, "panels": [], "title": "Continuous profiling", "type": "row"},
+    {
+      "datasource": {"type": "grafana-pyroscope-datasource", "uid": "pyroscope"},
+      "description": "Application-wide async-profiler CPU/time samples for the selected Spark run. Local mode contributes one local_jvm profile; cluster mode combines the driver and executor JVMs carrying the same Spark application ID.",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 18, "w": 24, "x": 0, "y": 81},
+      "id": 18,
+      "options": {"showFlameGraphOnly": false, "showTable": false, "showTopTable": true},
+      "targets": [{"datasource": {"type": "grafana-pyroscope-datasource", "uid": "pyroscope"}, "groupBy": [], "heatmapType": "individual", "includeExemplars": false, "includeHeatmap": false, "labelSelector": "{service_name=~\"$service\",spark_app_id=~\"local-${application:regex}\"}", "profileIdSelector": [], "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds", "queryType": "profile", "refId": "A", "spanSelector": []}],
+      "title": "Application CPU profile",
+      "type": "flamegraph"
     }
   ],
   "refresh": "",
   "schemaVersion": 41,
-  "tags": ["spark", "application", "opentelemetry", "telemetry"],
+  "tags": ["spark", "application", "opentelemetry", "profiling", "telemetry"],
   "templating": {"list": [{"allValue": ".+", "current": {"text": "telemetry-plugin-signals-smoke", "value": "telemetry-plugin-signals-smoke"}, "datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values(target_info, job)", "includeAll": true, "label": "Service", "multi": true, "name": "service", "options": [], "query": {"query": "label_values(target_info, job)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 1, "regex": "", "sort": 1, "type": "query"}, {"current": {"text": "1787924164733", "value": "1787924164733"}, "datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values({job=~\"$service\"}, __name__)", "includeAll": false, "label": "Application run (local-…)", "multi": false, "name": "application", "options": [], "query": {"query": "label_values({job=~\"$service\"}, __name__)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "/local_([0-9]+)_driver_DAGScheduler_job_allJobs_ratio/", "sort": 2, "type": "query"}, {"datasource": {"type": "prometheus", "uid": "mimir"}, "definition": "label_values({__name__=~\"local_${application}_.+_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\",spark_executor_id=~\".+\"}, spark_executor_id)", "includeAll": false, "label": "Executors / driver", "multi": true, "name": "executor", "options": [], "query": {"query": "label_values({__name__=~\"local_${application}_.+_ExecutorMetrics_JVMHeapMemory_ratio\",job=~\"$service\",spark_executor_id=~\".+\"}, spark_executor_id)", "refId": "PrometheusVariableQueryEditor-Executor"}, "refresh": 2, "regex": "", "sort": 1, "type": "query"}, {"current": {"selected": true, "text": "2e3141c254de1b0ebfdfca40a7d1a7c9", "value": "2e3141c254de1b0ebfdfca40a7d1a7c9"}, "hide": 2, "label": "Trace ID", "name": "traceId", "options": [], "query": "2e3141c254de1b0ebfdfca40a7d1a7c9", "skipUrlSync": false, "type": "textbox"}]},
   "time": {"from": "now-48h", "to": "now"},
   "timepicker": {},
