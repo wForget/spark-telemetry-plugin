@@ -22,7 +22,7 @@
     <maven.surefire.plugin.version>3.5.5</maven.surefire.plugin.version>
     <maven.shade.plugin.version>3.6.2</maven.shade.plugin.version>
     <maven.enforcer.plugin.version>3.6.3</maven.enforcer.plugin.version>
-    <maven.dependency.plugin.version>3.11.0</maven.dependency.plugin.version>
+    <maven.failsafe.plugin.version>3.5.5</maven.failsafe.plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -96,12 +96,12 @@
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-exporter-otlp</artifactId>
     </dependency>
-    <!-- Kept outside the shaded plugin JAR because it embeds native libraries. -->
+    <!-- Embedded without relocation: its JNI classes and native resources are package-sensitive. -->
     <dependency>
       <groupId>io.pyroscope</groupId>
       <artifactId>agent</artifactId>
       <version>${pyroscope.version}</version>
-      <scope>provided</scope>
+      <optional>true</optional>
     </dependency>
 
     <dependency>
@@ -188,27 +188,20 @@
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-dependency-plugin</artifactId>
-        <version>${maven.dependency.plugin.version}</version>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>${maven.failsafe.plugin.version}</version>
         <executions>
           <execution>
-            <id>copy-pyroscope-agent</id>
-            <phase>package</phase>
-            <goals><goal>copy</goal></goals>
-            <configuration>
-              <artifactItems>
-                <artifactItem>
-                  <groupId>io.pyroscope</groupId>
-                  <artifactId>agent</artifactId>
-                  <version>${pyroscope.version}</version>
-                  <type>jar</type>
-                  <outputDirectory>${project.build.directory}/agents</outputDirectory>
-                  <destFileName>pyroscope-agent-${pyroscope.version}.jar</destFileName>
-                </artifactItem>
-              </artifactItems>
-            </configuration>
+            <goals><goal>integration-test</goal><goal>verify</goal></goals>
           </execution>
         </executions>
+        <configuration>
+          <useModulePath>false</useModulePath>
+          <systemPropertyVariables>
+            <spark.telemetry.plugin.jar>${project.build.directory}/${project.build.finalName}.jar</spark.telemetry.plugin.jar>
+            <spark.telemetry.pyroscope.version>${pyroscope.version}</spark.telemetry.pyroscope.version>
+          </systemPropertyVariables>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -249,6 +242,7 @@
                   <manifestEntries>
                     <Implementation-Title>${project.name}</Implementation-Title>
                     <Implementation-Version>${project.version}</Implementation-Version>
+                    <Pyroscope-Agent-Version>${pyroscope.version}</Pyroscope-Agent-Version>
                     <Spark-Version>${spark.version}</Spark-Version>
                     <Scala-Binary-Version>${scala.binary.version}</Scala-Binary-Version>
                   </manifestEntries>

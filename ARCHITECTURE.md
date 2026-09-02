@@ -150,7 +150,10 @@ spark-telemetry-plugin
     └── TelemetryConfig (Scala, Spark ConfigBuilder / ConfigEntry)
 ```
 
-Dependencies should be shaded and relocated to avoid conflicts with Spark, Scala, Netty, gRPC, Guava, and application dependencies. Native profiling libraries should be packaged separately from the core plugin artifact.
+Pure-Java dependencies should be shaded and relocated to avoid conflicts with Spark, Scala, Netty,
+gRPC, Guava, and application dependencies. The self-contained Pyroscope distribution is embedded
+in the plugin artifact but deliberately excluded from relocation because its JNI classes and native
+resources form one package-sensitive unit.
 
 ## 6. Spark lifecycle integration
 
@@ -341,14 +344,17 @@ Creating one retained span for every task is prohibited by default because large
 
 ### 9.4 Profiles
 
-The production profile pipeline uses `io.pyroscope:agent` as a provided, separately distributed
-JAR. After Spark assigns the final application and Executor identifiers, a plugin-owned daemon
-thread builds the typed Pyroscope configuration and calls `PyroscopeAgent.start(Config)`.
-`-javaagent` is neither required nor recommended for the plugin-managed mode.
+The production profile pipeline embeds the pinned `io.pyroscope:agent` distribution into the
+single plugin JAR without relocating any `io.pyroscope.*` packages. After Spark assigns the final
+application and Executor identifiers, a plugin-owned daemon thread builds the typed Pyroscope
+configuration and calls `PyroscopeAgent.start(Config)`. `-javaagent` is neither required nor
+supported alongside the plugin-managed mode.
 
 The agent runs async-profiler and produces JFR profile windows. Its bounded upload queue pushes to
-Alloy `pyroscope.receive_http`; Alloy forwards through `pyroscope.write`. The core plugin JAR never
-shades or embeds the agent's platform-specific native libraries.
+Alloy `pyroscope.receive_http`; Alloy forwards through `pyroscope.write`. The final plugin JAR
+preserves the upstream root-level native libraries, checksums, JFR configuration, bootstrap
+resource, and vendored Java packages byte-for-byte. Relocating Pyroscope is prohibited because its
+JNI bindings are package-sensitive.
 
 Pyroscope has process-global lifecycle state. The plugin records ownership and calls `stop()` only
 when its own `start()` succeeded. A pre-existing agent is left untouched. In Spark local mode the
@@ -356,6 +362,10 @@ Driver exclusively owns the single shared-JVM profiler and the Executor plugin s
 startup and shutdown entirely. A JVM-global owner marker plus a system-classloader preflight
 prevents plugin copies loaded by different Spark classloaders from starting competing native
 profilers; the marker remains fail-safe if an owner cannot complete shutdown.
+
+The deployment environment is required not to contain another `io.pyroscope.*` implementation.
+Applications must not add another Pyroscope dependency, use `-javaagent`, start a second agent from
+code, or repackage the plugin into another fat JAR.
 
 OTLP Profiles remains a possible future transport behind an explicit feature flag; it is not part
 of the current runtime path.

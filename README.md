@@ -12,7 +12,7 @@ Spark Driver / Executor 进程内的 fail-open 遥测插件。Metrics、logs、t
 - 在拿到真实 app/executor identity 后，以 `PyroscopeAgent.start(Config)` 异步启动 async-profiler
 - 统一 Spark 配置、环境变量优先级、严格/按信号 fail-open 校验
 - 幂等且共享截止时间的有界 shutdown
-- OpenTelemetry、Protobuf、OkHttp、Okio、Kotlin 依赖 shade + relocate；包含 native 库的 Pyroscope agent 保持为单独 JAR
+- OpenTelemetry、Protobuf、OkHttp、Okio、Kotlin 依赖 shade + relocate；Pyroscope agent 连同 native 库内嵌但保持原包名
 
 SQL、Structured Streaming 和 adaptive sampling 属于后续阶段。
 
@@ -26,7 +26,6 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 mvn -Pspark-3.5 clean verify
 # target/spark-telemetry-plugin-0.1.0-SNAPSHOT-spark-3.5.9_2.12.jar
-# target/agents/pyroscope-agent-2.9.1.jar
 
 mvn -Pspark-4.2 clean verify
 # target/spark-telemetry-plugin-0.1.0-SNAPSHOT-spark-4.2.0_2.13.jar
@@ -40,7 +39,7 @@ mvn -Pspark-4.2 clean verify
 
 ```bash
 spark-submit \
-  --jars /path/to/spark-telemetry-plugin-0.1.0-SNAPSHOT-spark-3.5.9_2.12.jar,/path/to/pyroscope-agent-2.9.1.jar \
+  --jars /path/to/spark-telemetry-plugin-0.1.0-SNAPSHOT-spark-3.5.9_2.12.jar \
   --conf spark.plugins=cn.wangz.spark.telemetry.SparkTelemetryPlugin \
   --conf spark.telemetry.endpoint=http://127.0.0.1:4317 \
   --conf spark.telemetry.profiles.enabled=true \
@@ -51,7 +50,7 @@ spark-submit \
   --class com.example.OrdersJob app.jar
 ```
 
-上例的本地绝对路径适用于 client/local 场景。YARN 或 Kubernetes cluster mode 必须改用集群可分发 URI、Spark 的上传配置，或镜像内 `local:///...` 路径，并确保插件 JAR 与同版本 agent JAR 同时进入 Driver 和所有 Executor 的 classpath；不要用仅分发文件但不加入 classpath 的 `--files`。
+上例的本地绝对路径适用于 client/local 场景。YARN 或 Kubernetes cluster mode 必须改用集群可分发 URI、Spark 的上传配置，或镜像内 `local:///...` 路径，并确保这一插件 JAR 进入 Driver 和所有 Executor 的 classpath；不要用仅分发文件但不加入 classpath 的 `--files`。
 
 Metrics、logs、traces 共享同一个 OTLP gRPC base endpoint，插件不拼接信号路径。endpoint 只允许 `http://` 或 `https://` 的根 URI。插件不读取 token、authorization header、TLS private key 等 secret 配置，并拒绝所有 `${env:...}`、`${system:...}` 和 Spark 变量替换表达式，避免解析后的秘密进入 Executor 配置或遥测 Resource；认证与持久重试由 Alloy 管理。
 
@@ -59,9 +58,9 @@ Metrics、logs、traces 共享同一个 OTLP gRPC base endpoint，插件不拼�
 
 ## Profiling 启动方式
 
-插件使用 Pyroscope 官方 Java API `PyroscopeAgent.start(Config)`，不要求配置 JVM `-javaagent`。`--jars` 的作用只是让 Spark 将固定版本的独立 agent JAR 放到 Driver 和 Executor classpath；agent 不会进入 shaded 插件 JAR。代码启动发生在真实 Spark application ID 已知之后，因此 Driver、Executor profile 能使用与其他信号一致的静态身份标签，依赖缺失或启动失败也只会关闭 profiles。
+插件使用 Pyroscope 官方 Java API `PyroscopeAgent.start(Config)`，不要求配置 JVM `-javaagent`。固定版本的 agent、其 vendored Java 依赖、JFR 配置和各平台 async-profiler native 库都内嵌在插件 JAR 中；Pyroscope 包保持 `io.pyroscope.*` 原名，绝不 relocation，否则 JNI 绑定会失效。代码启动发生在真实 Spark application ID 已知之后，因此 Driver、Executor profile 能使用与其他信号一致的静态身份标签，agent 链接或启动失败也只会关闭 profiles。
 
-同一 JVM 不要再通过 `-javaagent` 或应用代码启动另一份 Pyroscope agent。若插件检测到已有 agent，会视为外部所有，不修改也不停止它。Local 模式的 Driver 与 Executor 共用一个 JVM，只由 Driver 启动一次，`spark_role=local_jvm` 表示 profile 同时包含 Driver 和 task 执行。
+不要再分发独立 Pyroscope JAR，也不要通过 `-javaagent`、应用代码或二次 fat-JAR 重打包引入另一份 `io.pyroscope.*`；当前部署约定运行环境中不存在其他 Pyroscope 类。同一 JVM 若已有 agent，则视为外部所有，不修改也不停止它。Local 模式的 Driver 与 Executor 共用一个 JVM，只由 Driver 启动一次，`spark_role=local_jvm` 表示 profile 同时包含 Driver 和 task 执行。
 
 与 premain 方式相比，代码启动看不到 Spark/JVM 最早启动阶段，也不会执行 Pyroscope 的 bootstrap API 注入；当前只使用 continuous profiling 和静态标签，因此不依赖该能力。若后续加入跨 classloader 的动态标签或 span-profile correlation，需要单独验证或重新评估 `-javaagent`。
 
@@ -81,7 +80,7 @@ Profile startup 涉及 native 库提取和加载，JVM `java.io.tmpdir` 需要�
 | `spark.telemetry.metrics.enabled` | `true` | metrics 开关 |
 | `spark.telemetry.logs.enabled` | `true` | logs 开关 |
 | `spark.telemetry.traces.enabled` | `true` | traces 开关 |
-| `spark.telemetry.profiles.enabled` | `false` | continuous profiles 开关；启用时必须通过 `--jars` 分发 agent |
+| `spark.telemetry.profiles.enabled` | `false` | continuous profiles 开关；agent 已内嵌在插件 JAR |
 | `spark.telemetry.profile.endpoint` | `http://127.0.0.1:9999` | Alloy Pyroscope HTTP base endpoint |
 | `spark.telemetry.profiles.event` | `ITIMER` | 主采样事件：`ITIMER`、`CPU`、`WALL` |
 | `spark.telemetry.profiles.interval` | `10ms` | async-profiler 采样间隔，范围 `5ms..1s` |

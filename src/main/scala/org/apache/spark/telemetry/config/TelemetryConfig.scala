@@ -199,7 +199,7 @@ object TelemetryConfig {
     validateAndFreeze(merged)
   }
 
-  /** Safe fallback when configuration or a provided dependency cannot be read. */
+  /** Safe fallback when configuration or a signal implementation cannot be read. */
   def disabled(): TelemetryConfig = {
     val conf = new SparkConf(false)
     conf.set(ENABLED, false)

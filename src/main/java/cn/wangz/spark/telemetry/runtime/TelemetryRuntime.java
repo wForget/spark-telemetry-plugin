@@ -130,7 +130,7 @@ public final class TelemetryRuntime implements AutoCloseable {
         } catch (RuntimeException ignored) {
             // A partially initialized or failing SDK must not block Spark shutdown.
         } catch (LinkageError ignored) {
-            // A provided-dependency ABI mismatch is also fail-open.
+            // An embedded-agent linkage or ABI failure is also fail-open.
         } finally {
             state.set(State.CLOSED);
         }

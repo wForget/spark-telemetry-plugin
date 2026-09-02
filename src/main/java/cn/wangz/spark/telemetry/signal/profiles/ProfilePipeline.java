@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit;
  */
 public final class ProfilePipeline implements ProfileLifecycle {
     private static final Logger LOG = LogManager.getLogger(ProfilePipeline.class);
-    private static final String EXPECTED_AGENT_VERSION = "2.9.1";
 
     private final Object stateLock = new Object();
     private final AgentController agent;
@@ -243,15 +242,7 @@ public final class ProfilePipeline implements ProfileLifecycle {
 
     private static final class RealAgentController implements AgentController {
         @Override public boolean isStarted() { return PyroscopeAgent.isStarted(); }
-        @Override public void start(Config config) {
-            Package metadata = PyroscopeAgent.class.getPackage();
-            String actual = metadata == null ? null : metadata.getImplementationVersion();
-            if (!EXPECTED_AGENT_VERSION.equals(actual)) {
-                throw new IllegalStateException(
-                        "Expected Pyroscope agent " + EXPECTED_AGENT_VERSION + " but found " + actual);
-            }
-            PyroscopeAgent.start(config);
-        }
+        @Override public void start(Config config) { PyroscopeAgent.start(config); }
         @Override public void stop() { PyroscopeAgent.stop(); }
     }
 

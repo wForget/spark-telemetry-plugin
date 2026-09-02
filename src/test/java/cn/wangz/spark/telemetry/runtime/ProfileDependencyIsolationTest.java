@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class ProfileDependencyIsolationTest {
     @Test
-    void missingProvidedAgentOnlyDisablesProfiles() throws Exception {
+    void hiddenEmbeddedAgentOnlyDisablesProfiles() throws Exception {
         Map<String, String> values = new HashMap<String, String>();
         values.put(TelemetryConfig.METRICS_ENABLED().key(), "false");
         values.put(TelemetryConfig.LOGS_ENABLED().key(), "false");
