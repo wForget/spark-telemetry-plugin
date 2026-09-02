@@ -493,7 +493,7 @@ spark.telemetry.profiles.enabled=true
 
 spark.telemetry.traces.task.sample-rate=0.01
 spark.telemetry.traces.slow-task-threshold=30s
-spark.telemetry.logs.minimum-level=INFO
+spark.telemetry.logs.minimum-level=ERROR
 spark.telemetry.profiles.sample-rate=19
 spark.telemetry.profiles.transport=pyroscope
 

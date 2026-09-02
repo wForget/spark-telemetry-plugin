@@ -75,7 +75,7 @@ object TelemetryConfig {
       builder.stringConf
         .transform(_.trim.toUpperCase(Locale.ROOT))
         .checkValues(Set("TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"))
-        .createWithDefault("INFO")
+        .createWithDefault("ERROR")
     }
   val LOG_CAPTURE: ConfigEntry[Boolean] =
     boolean("logs.capture", "Install the non-destructive Log4j2 telemetry bridge", default = true)

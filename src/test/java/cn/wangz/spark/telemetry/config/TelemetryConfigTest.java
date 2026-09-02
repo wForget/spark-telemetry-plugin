@@ -13,6 +13,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TelemetryConfigTest {
     @Test
+    void defaultsMinimumLogLevelToError() {
+        TelemetryConfig config = TelemetryConfig.from(
+                new HashMap<String, String>(), new HashMap<String, String>());
+
+        assertEquals(TelemetryLogLevel.ERROR, config.minimumLogLevel());
+    }
+
+    @Test
     void appliesDefaultsEnvironmentAndSparkPrecedence() {
         Map<String, String> environment = new HashMap<String, String>();
         environment.put("SPARK_TELEMETRY_TRACES_TASK_SAMPLE_RATE", "0.25");

@@ -64,7 +64,7 @@ Metrics、logs、traces 共享同一个 OTLP gRPC base endpoint，插件不拼�
 | `spark.telemetry.logs.enabled` | `true` | logs 开关 |
 | `spark.telemetry.traces.enabled` | `true` | traces 开关 |
 | `spark.telemetry.logs.capture` | `true` | 动态安装 Log4j2 bridge |
-| `spark.telemetry.logs.minimum-level` | `INFO` | 最低日志级别 |
+| `spark.telemetry.logs.minimum-level` | `ERROR` | 最低日志级别 |
 | `spark.telemetry.traces.task.sample-rate` | `0.01` | 普通成功任务采样率 |
 | `spark.telemetry.traces.slow-task-threshold` | `30s` | 慢任务全保留阈值 |
 | `spark.telemetry.queue.logs.capacity` | `10000` | OTel log batch queue |
