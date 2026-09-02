@@ -6,6 +6,9 @@ import io.opentelemetry.sdk.resources.Resource;
 
 import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.spark.telemetry.config.TelemetryConfig;
 
@@ -20,6 +23,7 @@ public final class ResourceIdentity {
     private final String applicationId;
     private final String role;
     private final String executorId;
+    private final boolean localMode;
 
     private ResourceIdentity(
             String serviceName,
@@ -29,7 +33,8 @@ public final class ResourceIdentity {
             String applicationName,
             String applicationId,
             String role,
-            String executorId) {
+            String executorId,
+            boolean localMode) {
         this.serviceName = serviceName;
         this.serviceNamespace = serviceNamespace;
         this.deploymentEnvironment = deploymentEnvironment;
@@ -38,24 +43,32 @@ public final class ResourceIdentity {
         this.applicationId = applicationId;
         this.role = role;
         this.executorId = executorId;
+        this.localMode = localMode;
     }
 
     public static ResourceIdentity driver(TelemetryConfig config, String applicationId) {
-        return create(config, applicationId, "driver", "driver");
+        return driver(config, applicationId, false);
+    }
+
+    public static ResourceIdentity driver(
+            TelemetryConfig config, String applicationId, boolean localMode) {
+        return create(config, applicationId, "driver", "driver", localMode);
     }
 
     public static ResourceIdentity executor(TelemetryConfig config, String applicationId, String executorId) {
-        return create(config, applicationId, "executor", executorId);
+        return create(config, applicationId, "executor", executorId, false);
     }
 
     private static ResourceIdentity create(
             TelemetryConfig config,
             String applicationId,
             String role,
-            String executorId) {
+            String executorId,
+            boolean localMode) {
         return new ResourceIdentity(
                 config.serviceName(), config.serviceNamespace(), config.deploymentEnvironment(), config.cluster(),
-                config.applicationName(), valueOr(applicationId, config.applicationId()), role, valueOr(executorId, "unknown"));
+                config.applicationName(), valueOr(applicationId, config.applicationId()), role,
+                valueOr(executorId, "unknown"), localMode);
     }
 
     public Resource metricResource() {
@@ -84,6 +97,21 @@ public final class ResourceIdentity {
         return Resource.create(attributes.build());
     }
 
+    /** Static Pyroscope labels. Job, stage and task identifiers are intentionally excluded. */
+    public Map<String, String> profileLabels() {
+        Map<String, String> labels = new LinkedHashMap<String, String>();
+        putIfPresent(labels, "service_namespace", serviceNamespace);
+        putIfPresent(labels, "deployment_environment", deploymentEnvironment);
+        putIfPresent(labels, "spark_cluster", cluster);
+        putIfPresent(labels, "spark_app_name", applicationName);
+        putIfPresent(labels, "spark_app_id", applicationId);
+        labels.put("spark_role", localMode ? "local_jvm" : role);
+        if ("executor".equals(role)) labels.put("spark_executor_id", executorId);
+        labels.put("service_instance_id", applicationId + "/" + executorId);
+        if (localMode) labels.put("spark_local_mode", "true");
+        return Collections.unmodifiableMap(labels);
+    }
+
     private AttributesBuilder stableAttributes() {
         AttributesBuilder attributes = Attributes.builder().put("service.name", serviceName);
         putIfPresent(attributes, "service.namespace", serviceNamespace);
@@ -94,6 +122,10 @@ public final class ResourceIdentity {
 
     private static void putIfPresent(AttributesBuilder attributes, String key, String value) {
         if (value != null && !value.isEmpty()) attributes.put(key, value);
+    }
+
+    private static void putIfPresent(Map<String, String> labels, String key, String value) {
+        if (value != null && !value.isEmpty()) labels.put(key, value);
     }
 
     private static String valueOr(String value, String fallback) {

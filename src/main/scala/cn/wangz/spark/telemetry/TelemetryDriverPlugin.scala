@@ -16,6 +16,7 @@ final class TelemetryDriverPlugin extends DriverPlugin {
   @volatile private var logBridge: Log4j2TelemetryBridge = _
   @volatile private var deferred: DeferredTelemetrySink = _
   private var applicationStartMillis: Long = 0L
+  private var localMode: Boolean = false
 
   override def init(sc: SparkContext, context: PluginContext): JMap[String, String] = {
     var strictRequested = false
@@ -25,6 +26,7 @@ final class TelemetryDriverPlugin extends DriverPlugin {
         .withApplication(sc.appName, "unknown")
       config = parsed
       applicationStartMillis = sc.startTime
+      localMode = sc.isLocal
       deferred = new DeferredTelemetrySink(parsed.tracesQueueCapacity())
       sc.addSparkListener(new TelemetrySparkListener(deferred))
       parsed.toExecutorConfiguration()
@@ -47,7 +49,7 @@ final class TelemetryDriverPlugin extends DriverPlugin {
       config = finalConfig
       val sparkMetrics = if (finalConfig.metricsEnabled()) SparkMetricRegistry.current() else null
       val created = TelemetryRuntime.create(
-        finalConfig, ResourceIdentity.driver(finalConfig, applicationId), sparkMetrics)
+        finalConfig, ResourceIdentity.driver(finalConfig, applicationId, localMode), sparkMetrics)
       created.traces().applicationStarted(applicationStartMillis)
       runtime = created
       deferred.bind(created.traces())

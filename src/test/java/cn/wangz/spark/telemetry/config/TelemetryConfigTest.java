@@ -18,6 +18,12 @@ class TelemetryConfigTest {
                 new HashMap<String, String>(), new HashMap<String, String>());
 
         assertEquals(TelemetryLogLevel.ERROR, config.minimumLogLevel());
+        assertFalse(config.profilesEnabled());
+        assertEquals("http://127.0.0.1:9999", config.profileEndpoint());
+        assertEquals("ITIMER", config.profileEvent());
+        assertEquals(Duration.ofMillis(10), config.profileInterval());
+        assertEquals(Duration.ofSeconds(10), config.profileUploadInterval());
+        assertEquals("memlimit=128m", config.asyncProfilerExtraArguments());
     }
 
     @Test
@@ -138,12 +144,22 @@ class TelemetryConfigTest {
     void driverConfigurationRoundTripsCanonicalTypedValues() {
         SparkConf spark = new SparkConf(false)
                 .set(TelemetryConfig.LOG_MINIMUM_LEVEL().key(), "warn")
+                .set(TelemetryConfig.PROFILES_ENABLED().key(), "true")
+                .set(TelemetryConfig.PROFILE_EVENT().key(), "wall")
+                .set(TelemetryConfig.PROFILE_INTERVAL().key(), "20ms")
+                .set(TelemetryConfig.PROFILE_UPLOAD_INTERVAL().key(), "15s")
+                .set(TelemetryConfig.ASYNC_PROFILER_EXTRA_ARGUMENTS().key(), "cstack=dwarf,memlimit=64m")
                 .set(TelemetryConfig.SHUTDOWN_FLUSH_TIMEOUT().key(), "2500ms");
 
         TelemetryConfig driver = TelemetryConfig.from(spark, new HashMap<String, String>());
         TelemetryConfig executor = TelemetryConfig.fromDriver(driver.toExecutorConfiguration());
 
         assertEquals(TelemetryLogLevel.WARN, executor.minimumLogLevel());
+        assertTrue(executor.profilesEnabled());
+        assertEquals("WALL", executor.profileEvent());
+        assertEquals(Duration.ofMillis(20), executor.profileInterval());
+        assertEquals(Duration.ofSeconds(15), executor.profileUploadInterval());
+        assertEquals("cstack=dwarf,memlimit=64m", executor.asyncProfilerExtraArguments());
         assertEquals(Duration.ofMillis(2500), executor.shutdownFlushTimeout());
         assertEquals(driver.toExecutorConfiguration(), executor.toExecutorConfiguration());
     }
@@ -181,6 +197,7 @@ class TelemetryConfigTest {
         assertFalse(config.metricsEnabled());
         assertFalse(config.logsEnabled());
         assertFalse(config.tracesEnabled());
+        assertFalse(config.profilesEnabled());
     }
 
     @Test
@@ -196,5 +213,106 @@ class TelemetryConfigTest {
         assertFalse(config.logsEnabled());
         assertFalse(config.tracesEnabled());
         assertEquals("http://127.0.0.1:4317", config.endpoint());
+    }
+
+    @Test
+    void invalidProfileConfigurationOnlyDisablesProfiles() {
+        String[][] invalidSettings = {
+                {TelemetryConfig.PROFILE_ENDPOINT().key(), "http://alloy:9999/ingest"},
+                {TelemetryConfig.PROFILE_INTERVAL().key(), "0ms"},
+                {TelemetryConfig.PROFILE_INTERVAL().key(), "1ms"},
+                {TelemetryConfig.PROFILE_UPLOAD_INTERVAL().key(), "0s"},
+                {TelemetryConfig.PROFILE_UPLOAD_INTERVAL().key(), "1s"},
+                {TelemetryConfig.PROFILE_EVENT().key(), "alloc"},
+                {TelemetryConfig.PROFILE_ALLOC().key(), "0"},
+                {TelemetryConfig.PROFILE_ALLOC().key(), "1"},
+                {TelemetryConfig.PROFILE_LOCK().key(), "0ms"},
+                {TelemetryConfig.PROFILE_LOCK().key(), "1ns"},
+                {TelemetryConfig.PROFILE_JAVA_STACK_DEPTH().key(), "4097"},
+                {TelemetryConfig.PROFILES_QUEUE_CAPACITY().key(), "65"},
+                {TelemetryConfig.ASYNC_PROFILER_EXTRA_ARGUMENTS().key(), "event=cpu"},
+                {TelemetryConfig.ASYNC_PROFILER_EXTRA_ARGUMENTS().key(), "e=cpu"},
+                {TelemetryConfig.ASYNC_PROFILER_EXTRA_ARGUMENTS().key(), "i=1000000"},
+                {TelemetryConfig.ASYNC_PROFILER_EXTRA_ARGUMENTS().key(), "safemode=0"},
+                {TelemetryConfig.ASYNC_PROFILER_EXTRA_ARGUMENTS().key(), "memlimit=2g"}
+        };
+        for (String[] setting : invalidSettings) {
+            Map<String, String> values = new HashMap<String, String>();
+            values.put(TelemetryConfig.PROFILES_ENABLED().key(), "true");
+            values.put(setting[0], setting[1]);
+
+            TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
+
+            assertTrue(config.enabled());
+            assertTrue(config.metricsEnabled());
+            assertTrue(config.logsEnabled());
+            assertTrue(config.tracesEnabled());
+            assertFalse(config.profilesEnabled(), setting[0]);
+        }
+    }
+
+    @Test
+    void strictInvalidProfileConfigurationFailsInitialization() {
+        Map<String, String> values = new HashMap<String, String>();
+        values.put(TelemetryConfig.STRICT().key(), "true");
+        values.put(TelemetryConfig.PROFILES_ENABLED().key(), "true");
+        values.put(TelemetryConfig.PROFILE_INTERVAL().key(), "0ms");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> TelemetryConfig.from(values, new HashMap<String, String>()));
+    }
+
+    @Test
+    void profileApplicationNameCannotUsePyroscopeInlineLabelSyntax() {
+        Map<String, String> values = new HashMap<String, String>();
+        values.put(TelemetryConfig.PROFILES_ENABLED().key(), "true");
+        values.put(TelemetryConfig.SERVICE_NAME().key(), "orders{tenant=secret}");
+
+        TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
+
+        assertTrue(config.enabled());
+        assertFalse(config.profilesEnabled());
+        assertTrue(config.metricsEnabled());
+    }
+
+    @Test
+    void inferredProfileApplicationNameIsRevalidatedAfterSparkIdentityIsKnown() {
+        Map<String, String> values = new HashMap<String, String>();
+        values.put(TelemetryConfig.PROFILES_ENABLED().key(), "true");
+
+        TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>())
+                .withApplication("orders{tenant=secret}", "application-1");
+
+        assertTrue(config.enabled());
+        assertFalse(config.profilesEnabled());
+        assertEquals("orders{tenant=secret}", config.serviceName());
+    }
+
+    @Test
+    void sparkProfileSettingsOverrideEnvironmentAndPropagate() {
+        Map<String, String> environment = new HashMap<String, String>();
+        environment.put("SPARK_TELEMETRY_PROFILES_ENABLED", "true");
+        environment.put("SPARK_TELEMETRY_PROFILES_EVENT", "wall");
+        Map<String, String> spark = new HashMap<String, String>();
+        spark.put(TelemetryConfig.PROFILE_EVENT().key(), "cpu");
+
+        TelemetryConfig config = TelemetryConfig.from(spark, environment);
+
+        assertTrue(config.profilesEnabled());
+        assertEquals("CPU", config.profileEvent());
+        assertEquals("CPU", config.toExecutorConfiguration().get(
+                TelemetryConfig.PROFILE_EVENT().key()));
+    }
+
+    @Test
+    void customCStackKeepsTheSafeDefaultMemoryLimit() {
+        Map<String, String> values = new HashMap<String, String>();
+        values.put(TelemetryConfig.PROFILES_ENABLED().key(), "true");
+        values.put(TelemetryConfig.ASYNC_PROFILER_EXTRA_ARGUMENTS().key(), "cstack=dwarf");
+
+        TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>());
+
+        assertTrue(config.profilesEnabled());
+        assertEquals("cstack=dwarf,memlimit=128m", config.asyncProfilerExtraArguments());
     }
 }

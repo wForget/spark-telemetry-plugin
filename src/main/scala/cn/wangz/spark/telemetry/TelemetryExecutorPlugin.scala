@@ -237,7 +237,9 @@ final class TelemetryExecutorPlugin extends ExecutorPlugin {
         SparkMetricRegistry.current()
       else
         null
-    val created = TelemetryRuntime.create(finalConfig, identity, sparkMetrics)
+    // A local-mode ExecutorPlugin shares the Driver JVM. The Driver exclusively owns the
+    // process-wide Pyroscope agent, so this runtime must not start or stop a second instance.
+    val created = TelemetryRuntime.create(finalConfig, identity, sparkMetrics, !isLocalExecutor)
     runtime = created
     // Local mode also shares the Driver's Log4j context. The Driver bridge captures task logs
     // after onTaskStart installs trace/span context, so a second root appender would duplicate them.

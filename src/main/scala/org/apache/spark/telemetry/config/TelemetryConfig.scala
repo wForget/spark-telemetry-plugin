@@ -23,8 +23,18 @@ final class TelemetryConfig private (
   def metricsEnabled(): Boolean = enabled() && conf.get(METRICS_ENABLED)
   def logsEnabled(): Boolean = enabled() && conf.get(LOGS_ENABLED)
   def tracesEnabled(): Boolean = enabled() && conf.get(TRACES_ENABLED)
+  def profilesEnabled(): Boolean = enabled() && conf.get(PROFILES_ENABLED)
   def logCaptureEnabled(): Boolean = logsEnabled() && conf.get(LOG_CAPTURE)
   def endpoint(): String = conf.get(ENDPOINT)
+  def profileEndpoint(): String = conf.get(PROFILE_ENDPOINT)
+  def profileEvent(): String = conf.get(PROFILE_EVENT)
+  def profileInterval(): Duration = Duration.ofMillis(conf.get(PROFILE_INTERVAL))
+  def profileUploadInterval(): Duration = Duration.ofMillis(conf.get(PROFILE_UPLOAD_INTERVAL))
+  def profileJavaStackDepth(): Int = conf.get(PROFILE_JAVA_STACK_DEPTH)
+  def profilesQueueCapacity(): Int = conf.get(PROFILES_QUEUE_CAPACITY)
+  def profileAlloc(): String = conf.get(PROFILE_ALLOC)
+  def profileLock(): String = conf.get(PROFILE_LOCK)
+  def asyncProfilerExtraArguments(): String = conf.get(ASYNC_PROFILER_EXTRA_ARGUMENTS)
   def minimumLogLevel(): TelemetryLogLevel = TelemetryLogLevel.valueOf(conf.get(LOG_MINIMUM_LEVEL))
   def taskSampleRate(): Double = conf.get(TASK_SAMPLE_RATE)
   def slowTaskThreshold(): Duration = Duration.ofMillis(conf.get(SLOW_TASK_THRESHOLD))
@@ -48,6 +58,7 @@ final class TelemetryConfig private (
     if (enriched.get(SERVICE_NAME) == "spark") {
       enriched.set(SERVICE_NAME, emptyTo(appName, "spark"))
     }
+    validateProfileApplicationName(enriched, enriched.get(STRICT))
     freeze(enriched)
   }
 
@@ -69,6 +80,38 @@ object TelemetryConfig {
   val METRICS_ENABLED: ConfigEntry[Boolean] = signalEnabled("metrics")
   val LOGS_ENABLED: ConfigEntry[Boolean] = signalEnabled("logs")
   val TRACES_ENABLED: ConfigEntry[Boolean] = signalEnabled("traces")
+  val PROFILES_ENABLED: ConfigEntry[Boolean] =
+    boolean("profiles.enabled", "Enable Pyroscope continuous profiling", default = false)
+  val PROFILE_ENDPOINT: ConfigEntry[String] =
+    text("profile.endpoint", "Alloy Pyroscope HTTP endpoint", "http://127.0.0.1:9999")
+  val PROFILE_EVENT: ConfigEntry[String] =
+    define("profiles.event", "async-profiler primary sampling event") { builder =>
+      builder.stringConf
+        .transform(_.trim.toUpperCase(Locale.ROOT))
+        .checkValues(Set("CPU", "WALL", "ITIMER"))
+        .createWithDefault("ITIMER")
+    }
+  val PROFILE_INTERVAL: ConfigEntry[Long] =
+    boundedTime("profiles.interval", "async-profiler sampling interval", "10ms", 5L, 1000L)
+  val PROFILE_UPLOAD_INTERVAL: ConfigEntry[Long] =
+    boundedTime("profiles.upload-interval", "Profile collection and upload interval",
+      "10s", 2000L, 300000L)
+  val PROFILE_JAVA_STACK_DEPTH: ConfigEntry[Int] =
+    boundedInt("profiles.java-stack-depth", "Maximum Java stack depth", 2048, 64, 4096)
+  val PROFILES_QUEUE_CAPACITY: ConfigEntry[Int] =
+    boundedInt("queue.profiles.capacity", "Pyroscope upload queue capacity", 10, 1, 64)
+  val PROFILE_ALLOC: ConfigEntry[String] =
+    define("profiles.alloc", "Optional async-profiler allocation sampling interval") { builder =>
+      builder.stringConf.transform(validateProfileAlloc).createWithDefault("")
+    }
+  val PROFILE_LOCK: ConfigEntry[String] =
+    define("profiles.lock", "Optional async-profiler lock profiling threshold") { builder =>
+      builder.stringConf.transform(validateProfileLock).createWithDefault("")
+    }
+  val ASYNC_PROFILER_EXTRA_ARGUMENTS: ConfigEntry[String] =
+    define("profiles.async-profiler.extra-arguments", "Additional async-profiler arguments") { builder =>
+      builder.stringConf.transform(validateAsyncProfilerArguments).createWithDefault("memlimit=128m")
+    }
 
   val LOG_MINIMUM_LEVEL: ConfigEntry[String] =
     define("logs.minimum-level", "Minimum captured log level") { builder =>
@@ -117,7 +160,10 @@ object TelemetryConfig {
 
   private val UserEntries: Seq[ConfigEntry[_]] = Seq(
     ENABLED, STRICT, ENDPOINT,
-    METRICS_ENABLED, LOGS_ENABLED, TRACES_ENABLED,
+    METRICS_ENABLED, LOGS_ENABLED, TRACES_ENABLED, PROFILES_ENABLED,
+    PROFILE_ENDPOINT, PROFILE_EVENT, PROFILE_INTERVAL, PROFILE_UPLOAD_INTERVAL,
+    PROFILE_JAVA_STACK_DEPTH, PROFILES_QUEUE_CAPACITY, PROFILE_ALLOC, PROFILE_LOCK,
+    ASYNC_PROFILER_EXTRA_ARGUMENTS,
     LOG_MINIMUM_LEVEL, LOG_CAPTURE, TASK_SAMPLE_RATE, SLOW_TASK_THRESHOLD,
     LOGS_QUEUE_CAPACITY, TRACES_QUEUE_CAPACITY,
     BATCH_MAX_SIZE, BATCH_TIMEOUT, EXPORT_TIMEOUT,
@@ -209,6 +255,19 @@ object TelemetryConfig {
       builder.intConf.checkValue(_ > 0, "must be greater than zero").createWithDefault(default)
     }
 
+  private def boundedInt(
+      suffix: String,
+      documentation: String,
+      default: Int,
+      minimum: Int,
+      maximum: Int): ConfigEntry[Int] =
+    define(suffix, documentation) { builder =>
+      builder.intConf
+        .checkValue(value => value >= minimum && value <= maximum,
+          "must be between " + minimum + " and " + maximum)
+        .createWithDefault(default)
+    }
+
   private def time(
       suffix: String,
       documentation: String,
@@ -216,6 +275,19 @@ object TelemetryConfig {
     define(suffix, documentation) { builder =>
       builder.timeConf(TimeUnit.MILLISECONDS)
         .checkValue(_ >= 0L, "must not be negative")
+        .createWithDefaultString(default)
+    }
+
+  private def boundedTime(
+      suffix: String,
+      documentation: String,
+      default: String,
+      minimumMillis: Long,
+      maximumMillis: Long): ConfigEntry[Long] =
+    define(suffix, documentation) { builder =>
+      builder.timeConf(TimeUnit.MILLISECONDS)
+        .checkValue(value => value >= minimumMillis && value <= maximumMillis,
+          "must be between " + minimumMillis + "ms and " + maximumMillis + "ms")
         .createWithDefaultString(default)
     }
 
@@ -265,9 +337,16 @@ object TelemetryConfig {
       Seq(LOG_CAPTURE, LOGS_QUEUE_CAPACITY, LOG_MINIMUM_LEVEL))
     validateSignal(conf, strict, TRACES_ENABLED,
       Seq(TRACES_QUEUE_CAPACITY, TASK_SAMPLE_RATE, SLOW_TASK_THRESHOLD))
+    validateSignal(conf, strict, PROFILES_ENABLED,
+      Seq(PROFILE_EVENT, PROFILE_INTERVAL, PROFILE_UPLOAD_INTERVAL,
+        PROFILE_JAVA_STACK_DEPTH, PROFILES_QUEUE_CAPACITY, PROFILE_ALLOC, PROFILE_LOCK,
+        ASYNC_PROFILER_EXTRA_ARGUMENTS))
 
     validateEndpoint(conf, strict, "OTLP gRPC endpoint is not a safe base http(s) URI",
       Seq(METRICS_ENABLED, LOGS_ENABLED, TRACES_ENABLED), ENDPOINT)
+    validateEndpoint(conf, strict, "Pyroscope endpoint is not a safe base http(s) URI",
+      Seq(PROFILES_ENABLED), PROFILE_ENDPOINT)
+    validateProfileApplicationName(conf, strict)
     freeze(conf)
   }
 
@@ -301,6 +380,16 @@ object TelemetryConfig {
         affectedSignals.foreach(conf.set(_, false))
         conf.remove(endpointEntry)
     }
+  }
+
+  private def validateProfileApplicationName(conf: SparkConf, strict: Boolean): Unit = {
+    if (!value(conf, PROFILES_ENABLED)) return
+    val name = value(conf, SERVICE_NAME)
+    if (name.nonEmpty && !name.exists(character => character == '{' || character == '}')) return
+    val invalid = new IllegalArgumentException(
+      SERVICE_NAME.key + " must be non-empty and must not contain '{' or '}' when profiles are enabled")
+    if (strict) throw invalid
+    conf.set(PROFILES_ENABLED, false)
   }
 
   private def read(conf: SparkConf, entry: ConfigEntry[_]): Unit = {
@@ -361,6 +450,103 @@ object TelemetryConfig {
         (uri.getScheme == "http" || uri.getScheme == "https")
     } catch {
       case _: Exception => false
+    }
+  }
+
+  private val AllocationPattern = "^([1-9][0-9]*)([kKmMgG]?)$".r
+  private val LockPattern = "^([1-9][0-9]*)(ns|us|ms|s)?$".r
+  private val MemoryLimitPattern = "^([1-9][0-9]*)([mMgG])$".r
+
+  private def validateProfileAlloc(raw: String): String = {
+    val value = raw.trim
+    if (value.isEmpty) return value
+    val bytes = value match {
+      case AllocationPattern(amount, unit) =>
+        checkedMultiply(amount.toLong, unit.toLowerCase(Locale.ROOT) match {
+          case "k" => 1024L
+          case "m" => 1024L * 1024L
+          case "g" => 1024L * 1024L * 1024L
+          case _ => 1L
+        }, PROFILE_ALLOC.key)
+      case _ => throw new IllegalArgumentException(
+        PROFILE_ALLOC.key + " must be empty or a byte count such as 512k")
+    }
+    if (bytes < 512L * 1024L || bytes > 1024L * 1024L * 1024L) {
+      throw new IllegalArgumentException(PROFILE_ALLOC.key + " must be between 512k and 1g")
+    }
+    value
+  }
+
+  private def validateProfileLock(raw: String): String = {
+    val value = raw.trim.toLowerCase(Locale.ROOT)
+    if (value.isEmpty) return value
+    val nanos = value match {
+      case LockPattern(amount, unit) =>
+        checkedMultiply(amount.toLong, Option(unit).getOrElse("ns") match {
+          case "us" => 1000L
+          case "ms" => 1000L * 1000L
+          case "s" => 1000L * 1000L * 1000L
+          case _ => 1L
+        }, PROFILE_LOCK.key)
+      case _ => throw new IllegalArgumentException(
+        PROFILE_LOCK.key + " must be empty or a duration such as 10ms")
+    }
+    if (nanos < 1000L * 1000L || nanos > 60L * 1000L * 1000L * 1000L) {
+      throw new IllegalArgumentException(PROFILE_LOCK.key + " must be between 1ms and 60s")
+    }
+    value
+  }
+
+  private def validateAsyncProfilerArguments(raw: String): String = {
+    val arguments = raw.trim
+    if (arguments.isEmpty) return "memlimit=128m"
+    var seen = Set.empty[String]
+    val normalized = Vector.newBuilder[String]
+    arguments.split(",").iterator.map(_.trim).filter(_.nonEmpty).foreach { argument =>
+      val separator = argument.indexOf('=')
+      if (separator <= 0 || separator == argument.length - 1) {
+        throw new IllegalArgumentException(
+          ASYNC_PROFILER_EXTRA_ARGUMENTS.key + " only accepts name=value arguments")
+      }
+      val name = argument.substring(0, separator).trim.toLowerCase(Locale.ROOT)
+      val value = argument.substring(separator + 1).trim.toLowerCase(Locale.ROOT)
+      if (seen.contains(name)) {
+        throw new IllegalArgumentException(
+          ASYNC_PROFILER_EXTRA_ARGUMENTS.key + " contains duplicate argument '" + name + "'")
+      }
+      seen += name
+      name match {
+        case "cstack" if Set("fp", "dwarf", "vm", "vmx", "no").contains(value) => ()
+        case "memlimit" => validateMemoryLimit(value)
+        case "cstack" => throw new IllegalArgumentException(
+          ASYNC_PROFILER_EXTRA_ARGUMENTS.key + " cstack must be fp, dwarf, vm, vmx, or no")
+        case _ => throw new IllegalArgumentException(
+          ASYNC_PROFILER_EXTRA_ARGUMENTS.key + " only allows cstack and memlimit")
+      }
+      normalized += name + "=" + value
+    }
+    if (!seen.contains("memlimit")) normalized += "memlimit=128m"
+    normalized.result().mkString(",")
+  }
+
+  private def validateMemoryLimit(value: String): Unit = {
+    val megabytes = value match {
+      case MemoryLimitPattern(amount, unit) =>
+        checkedMultiply(amount.toLong,
+          if (unit.equalsIgnoreCase("g")) 1024L else 1L,
+          ASYNC_PROFILER_EXTRA_ARGUMENTS.key)
+      case _ => throw new IllegalArgumentException(
+        ASYNC_PROFILER_EXTRA_ARGUMENTS.key + " memlimit must use m or g units")
+    }
+    if (megabytes < 16L || megabytes > 1024L) {
+      throw new IllegalArgumentException(
+        ASYNC_PROFILER_EXTRA_ARGUMENTS.key + " memlimit must be between 16m and 1g")
+    }
+  }
+
+  private def checkedMultiply(value: Long, multiplier: Long, key: String): Long = {
+    try Math.multiplyExact(value, multiplier) catch {
+      case _: ArithmeticException => throw new IllegalArgumentException(key + " is too large")
     }
   }
 

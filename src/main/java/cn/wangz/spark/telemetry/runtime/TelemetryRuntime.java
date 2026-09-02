@@ -3,6 +3,8 @@ package cn.wangz.spark.telemetry.runtime;
 import com.codahale.metrics.MetricRegistry;
 import cn.wangz.spark.telemetry.signal.logs.LogPipeline;
 import cn.wangz.spark.telemetry.signal.metrics.SparkMetricProducer;
+import cn.wangz.spark.telemetry.signal.profiles.ProfileLifecycle;
+import cn.wangz.spark.telemetry.signal.profiles.ProfilePipeline;
 import cn.wangz.spark.telemetry.signal.traces.TaskFilteringSpanProcessor;
 import cn.wangz.spark.telemetry.signal.traces.TracePipeline;
 import cn.wangz.spark.telemetry.signal.traces.TraceSink;
@@ -24,7 +26,9 @@ import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.logging.log4j.LogManager;
 import org.apache.spark.telemetry.config.TelemetryConfig;
 
 /**
@@ -32,6 +36,9 @@ import org.apache.spark.telemetry.config.TelemetryConfig;
  */
 public final class TelemetryRuntime implements AutoCloseable {
     private static final String INSTRUMENTATION_SCOPE = "spark-telemetry-plugin";
+    private static final org.apache.logging.log4j.Logger LOG =
+            LogManager.getLogger(TelemetryRuntime.class);
+    private static final AtomicBoolean PROFILE_FAILURE_REPORTED = new AtomicBoolean();
 
     private final TelemetryConfig config;
     private final SdkMeterProvider meterProvider;
@@ -39,6 +46,7 @@ public final class TelemetryRuntime implements AutoCloseable {
     private final SdkLoggerProvider loggerProvider;
     private final TracePipeline traces;
     private final LogPipeline logs;
+    private final ProfileLifecycle profiles;
     private final AtomicReference<State> state = new AtomicReference<State>(State.RUNNING);
 
     private TelemetryRuntime(
@@ -47,17 +55,27 @@ public final class TelemetryRuntime implements AutoCloseable {
             SdkTracerProvider tracerProvider,
             SdkLoggerProvider loggerProvider,
             TracePipeline traces,
-            LogPipeline logs) {
+            LogPipeline logs,
+            ProfileLifecycle profiles) {
         this.config = config;
         this.meterProvider = meterProvider;
         this.tracerProvider = tracerProvider;
         this.loggerProvider = loggerProvider;
         this.traces = traces;
         this.logs = logs;
+        this.profiles = profiles;
     }
 
     public static TelemetryRuntime create(
             TelemetryConfig config, ResourceIdentity identity, MetricRegistry sparkMetrics) {
+        return create(config, identity, sparkMetrics, true);
+    }
+
+    public static TelemetryRuntime create(
+            TelemetryConfig config,
+            ResourceIdentity identity,
+            MetricRegistry sparkMetrics,
+            boolean profilesAllowed) {
         SdkMeterProvider meterProvider = buildMeterProvider(config, identity, sparkMetrics);
         SdkTracerProvider tracerProvider = buildTracerProvider(config, identity);
         SdkLoggerProvider loggerProvider = buildLoggerProvider(config, identity);
@@ -69,7 +87,8 @@ public final class TelemetryRuntime implements AutoCloseable {
                 tracerProvider,
                 loggerProvider,
                 new TracePipeline(tracer, config.tracesEnabled()),
-                new LogPipeline(logger, config.minimumLogLevel()));
+                new LogPipeline(logger, config.minimumLogLevel()),
+                buildProfilePipeline(config, identity, profilesAllowed));
     }
 
     public LogPipeline logs() { return logs; }
@@ -95,8 +114,19 @@ public final class TelemetryRuntime implements AutoCloseable {
                 }
             }, "spark-telemetry-provider-shutdown");
             providerShutdown.setDaemon(true);
+            Thread profileShutdown = null;
+            if (profiles != null) {
+                profileShutdown = new Thread(new Runnable() {
+                    @Override public void run() {
+                        profiles.close(remaining(deadline));
+                    }
+                }, "spark-telemetry-profile-shutdown");
+                profileShutdown.setDaemon(true);
+                profileShutdown.start();
+            }
             providerShutdown.start();
             joinUntil(providerShutdown, deadline);
+            joinUntil(profileShutdown, deadline);
         } catch (RuntimeException ignored) {
             // A partially initialized or failing SDK must not block Spark shutdown.
         } catch (LinkageError ignored) {
@@ -168,12 +198,38 @@ public final class TelemetryRuntime implements AutoCloseable {
         return builder.build();
     }
 
+    private static ProfileLifecycle buildProfilePipeline(
+            TelemetryConfig config, ResourceIdentity identity, boolean profilesAllowed) {
+        if (!profilesAllowed || !config.profilesEnabled()) return null;
+        try {
+            return ProfilePipeline.startAsync(config, identity);
+        } catch (RuntimeException failure) {
+            reportProfileFailure(failure);
+            return null;
+        } catch (LinkageError failure) {
+            reportProfileFailure(failure);
+            return null;
+        }
+    }
+
+    private static void reportProfileFailure(Throwable failure) {
+        if (PROFILE_FAILURE_REPORTED.compareAndSet(false, true)) {
+            LOG.warn("Pyroscope is unavailable; profiling is disabled while other telemetry remains active: {}",
+                    failure.toString());
+        }
+    }
+
     private static void flush(io.opentelemetry.sdk.common.CompletableResultCode result, long deadline) {
         long remaining = deadline - System.nanoTime();
         if (remaining > 0L) result.join(remaining, TimeUnit.NANOSECONDS);
     }
 
+    private static Duration remaining(long deadline) {
+        return Duration.ofNanos(Math.max(0L, deadline - System.nanoTime()));
+    }
+
     private static void joinUntil(Thread thread, long deadline) {
+        if (thread == null) return;
         boolean interrupted = false;
         try {
             while (thread.isAlive()) {

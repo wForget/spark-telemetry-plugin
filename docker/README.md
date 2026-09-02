@@ -33,13 +33,14 @@ docker compose down
 docker compose down -v
 ```
 
-所有服务均使用 `network_mode: host`，直接共享宿主机网络栈，不再使用 Docker 端口映射和 Compose 服务名解析。远程 Spark 应将 `spark.telemetry.endpoint` 配置为 `http://<compose-host>:4317`。部署到远程机器时应通过防火墙或安全组限制这些端口的访问来源。
+所有服务均使用 `network_mode: host`，直接共享宿主机网络栈，不再使用 Docker 端口映射和 Compose 服务名解析。远程 Spark 应将 `spark.telemetry.endpoint` 配置为 `http://<compose-host>:4317`，并将 `spark.telemetry.profile.endpoint` 配置为 `http://<compose-host>:9999`。部署到远程机器时应通过防火墙或安全组限制这些端口的访问来源。
 
 | Component | Port |
 |---|---|
 | Grafana | `3000` |
 | Alloy UI | `12345` |
 | Alloy OTLP gRPC / HTTP | `4317` / `4318` |
+| Alloy Pyroscope HTTP receiver | `9999` |
 | Mimir | `9009` |
 | Loki | `3100` |
 | Tempo | `3200` |
@@ -47,4 +48,4 @@ docker compose down -v
 
 为避免 host 网络模式下的监听冲突，Tempo 的后端 OTLP gRPC / HTTP 端口调整为 `14317` / `14318`；Spark 只连接 Alloy 的 OTLP gRPC `4317`。Mimir、Loki、Tempo、Pyroscope 的内部 gRPC 端口分别为 `19095`、`19096`、`19097`、`19098`。
 
-Grafana 会自动 provision Mimir、Loki、Tempo 和 Pyroscope 数据源，并配置 metrics exemplar、trace 和 log 的跳转关系。当前插件尚未实现 profile 采集，所以 Pyroscope 默认不会出现 Spark profile 数据。
+Grafana 会自动 provision Mimir、Loki、Tempo 和 Pyroscope 数据源，并配置 metrics exemplar、trace 和 log 的跳转关系。Profile 由 Spark JVM 中的 Pyroscope Java Agent 推送到 Alloy `9999`，再由 Alloy 写入 Pyroscope `4040`。

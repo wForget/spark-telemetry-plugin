@@ -57,6 +57,7 @@ services:
       - mimir
       - loki
       - tempo
+      - pyroscope
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - alloy-data:/var/lib/alloy/data

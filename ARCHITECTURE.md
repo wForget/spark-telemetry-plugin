@@ -140,9 +140,7 @@ spark-telemetry-plugin
 ├── transport
 │   ├── OtlpMetricExporter
 │   ├── OtlpLogExporter
-│   ├── OtlpTraceExporter
-│   ├── PyroscopeProfileExporter
-│   └── OtlpProfileExporterExperimental
+│   └── OtlpTraceExporter
 ├── reliability
 │   ├── BoundedSignalQueue
 │   ├── BatchProcessor
@@ -343,26 +341,24 @@ Creating one retained span for every task is prohibited by default because large
 
 ### 9.4 Profiles
 
-The profile pipeline is transport-pluggable:
+The production profile pipeline uses `io.pyroscope:agent` as a provided, separately distributed
+JAR. After Spark assigns the final application and Executor identifiers, a plugin-owned daemon
+thread builds the typed Pyroscope configuration and calls `PyroscopeAgent.start(Config)`.
+`-javaagent` is neither required nor recommended for the plugin-managed mode.
 
-```java
-public interface ProfileExporter {
-    ExportResult export(ProfileBatch batch);
-}
-```
+The agent runs async-profiler and produces JFR profile windows. Its bounded upload queue pushes to
+Alloy `pyroscope.receive_http`; Alloy forwards through `pyroscope.write`. The core plugin JAR never
+shades or embeds the agent's platform-specific native libraries.
 
-Production default:
+Pyroscope has process-global lifecycle state. The plugin records ownership and calls `stop()` only
+when its own `start()` succeeded. A pre-existing agent is left untouched. In Spark local mode the
+Driver exclusively owns the single shared-JVM profiler and the Executor plugin skips profile
+startup and shutdown entirely. A JVM-global owner marker plus a system-classloader preflight
+prevents plugin copies loaded by different Spark classloaders from starting competing native
+profilers; the marker remains fail-safe if an owner cannot complete shutdown.
 
-- Java/JFR, async-profiler, or Pyroscope-compatible collection
-- Push to Alloy `pyroscope.receive_http`
-- Alloy forwards through `pyroscope.write`
-
-Experimental option:
-
-- OTLP Profiles exporter behind an explicit feature flag
-- No persistent compatibility guarantee while the protocol remains in development
-
-Profile data uses a lower-priority queue. When overloaded, the plugin reduces the sampling rate or skips a profile window rather than consuming unbounded memory.
+OTLP Profiles remains a possible future transport behind an explicit feature flag; it is not part
+of the current runtime path.
 
 ## 10. Push protocols
 
@@ -386,7 +382,7 @@ No custom four-signal envelope is introduced.
 | Metrics | Aggregate and coalesce | Coalesce gauges; count rejected updates |
 | Logs | Severity-aware queue | Drop DEBUG/INFO before WARN/ERROR |
 | Traces | Sampling-aware queue | Drop normal successful traces before errors |
-| Profiles | Window-oriented queue | Lower sampling frequency or skip a window |
+| Profiles | Pyroscope agent bounded upload queue | Drop queued profile windows |
 
 Independent queues prevent log or profile bursts from blocking metrics and traces.
 
@@ -405,7 +401,7 @@ Retry happens only on background threads. Non-retryable protocol errors are coun
 
 ### 11.3 Delivery semantics
 
-The plugin provides best-effort at-least-once delivery while a batch remains in memory. Exactly-once delivery is not a goal. Duplicate telemetry must be tolerated by downstream systems.
+The plugin provides best-effort delivery while a batch remains in memory. Exactly-once delivery is not a goal. Duplicate telemetry must be tolerated by downstream systems. Pyroscope shutdown does not guarantee a final dump or queue drain, so short applications and terminated Executors can lose the last profile window.
 
 Disk-backed durability belongs in Alloy rather than the Spark plugin. This keeps Executor local state small and avoids task interference from disk I/O.
 
@@ -438,9 +434,10 @@ Responsibilities:
 Endpoint discovery:
 
 ```text
-Standalone or YARN: http://127.0.0.1:4317
-Kubernetes:          http://<node-host-ip>:4317
-Profiles:            http://<node-local-alloy>:9999
+Standalone or YARN OTLP:     http://127.0.0.1:4317
+Standalone or YARN profiles: http://127.0.0.1:9999
+Kubernetes OTLP:             http://<sidecar-or-node-host-ip>:4317
+Kubernetes profiles:         http://<sidecar-or-node-host-ip>:9999
 ```
 
 In Kubernetes, the plugin can read a Downward API-provided host IP and construct the node-local endpoint. A sidecar is supported but is not the default because Spark may create many short-lived Executor Pods.
@@ -494,10 +491,12 @@ spark.telemetry.profiles.enabled=true
 spark.telemetry.traces.task.sample-rate=0.01
 spark.telemetry.traces.slow-task-threshold=30s
 spark.telemetry.logs.minimum-level=ERROR
-spark.telemetry.profiles.sample-rate=19
-spark.telemetry.profiles.transport=pyroscope
+spark.telemetry.profiles.event=itimer
+spark.telemetry.profiles.interval=10ms
+spark.telemetry.profiles.upload-interval=10s
+spark.telemetry.profiles.java-stack-depth=2048
+spark.telemetry.profiles.async-profiler.extra-arguments=cstack=dwarf
 
-spark.telemetry.queue.metrics.capacity=1000
 spark.telemetry.queue.logs.capacity=10000
 spark.telemetry.queue.traces.capacity=5000
 spark.telemetry.queue.profiles.capacity=10
@@ -515,6 +514,11 @@ Configuration precedence:
 4. Driver-validated immutable Executor configuration
 
 Secrets are deliberately excluded from this model.
+
+Profile sampling intervals, upload intervals, Java stack depth, allocation/lock thresholds, queue
+capacity, and async-profiler memory are bounded. Raw async-profiler customization is allowlisted to
+validated `cstack` and `memlimit` settings so alternate CLI aliases cannot override lifecycle,
+output, signal, or sampling configuration.
 
 ## 15. Plugin self-observability
 
