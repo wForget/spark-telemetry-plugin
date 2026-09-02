@@ -190,13 +190,13 @@
     {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 80}, "id": 106, "panels": [], "title": "Continuous profiling", "type": "row"},
     {
       "datasource": {"type": "grafana-pyroscope-datasource", "uid": "pyroscope"},
-      "description": "Application-wide async-profiler CPU/time samples for the selected Spark run. Local mode contributes one local_jvm profile; cluster mode combines the driver and executor JVMs carrying the same Spark application ID.",
+      "description": "Async-profiler CPU/time samples for the selected Spark JVMs. The executor selector maps to the profile service_instance_id suffix, including driver for local mode and cluster drivers.",
       "fieldConfig": {"defaults": {}, "overrides": []},
       "gridPos": {"h": 18, "w": 24, "x": 0, "y": 81},
       "id": 18,
-      "options": {"showFlameGraphOnly": false, "showTable": false, "showTopTable": true},
-      "targets": [{"datasource": {"type": "grafana-pyroscope-datasource", "uid": "pyroscope"}, "groupBy": [], "heatmapType": "individual", "includeExemplars": false, "includeHeatmap": false, "labelSelector": "{service_name=~\"$service\",spark_app_id=~\"local-${application:regex}\"}", "profileIdSelector": [], "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds", "queryType": "profile", "refId": "A", "spanSelector": []}],
-      "title": "Application CPU profile",
+      "options": {"showFlameGraphOnly": false},
+      "targets": [{"datasource": {"type": "grafana-pyroscope-datasource", "uid": "pyroscope"}, "groupBy": [], "heatmapType": "individual", "includeExemplars": false, "includeHeatmap": false, "labelSelector": "{service_name=~\"$service\",spark_app_id=~\"local-${application:regex}\",service_instance_id=~\"local-${application:regex}/${executor:regex}\"}", "profileIdSelector": [], "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds", "queryType": "profile", "refId": "A", "spanSelector": []}],
+      "title": "CPU profile · $executor",
       "type": "flamegraph"
     }
   ],

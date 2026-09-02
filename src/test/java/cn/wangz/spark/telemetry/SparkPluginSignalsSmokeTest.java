@@ -4,6 +4,7 @@ import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricRegistry;
 import cn.wangz.spark.telemetry.signal.metrics.SparkMetricRegistry;
+import io.pyroscope.javaagent.PyroscopeAgent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -18,7 +19,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,16 +30,19 @@ class SparkPluginSignalsSmokeTest {
     private static final Logger LOGGER = LogManager.getLogger("spark.smoke.telemetry");
     private static final int LARGE_OBJECT_BYTES = 4 * 1024 * 1024;
     private static final int LARGE_OBJECT_COUNT = 8;
+    private static final long PROFILER_START_TIMEOUT_SECONDS = 5L;
+    private static final long PROFILER_STOP_TIMEOUT_SECONDS = 15L;
     private static final AtomicInteger INTENTIONAL_FAILURES = new AtomicInteger();
     private static final AtomicInteger RETRIED_SUCCESSES = new AtomicInteger();
 
     @Test
-    void coversSuccessFailureSkewShuffleAndMemorySignals() {
+    void coversSuccessFailureSkewShuffleMemoryAndProfileSignals() {
         INTENTIONAL_FAILURES.set(0);
         RETRIED_SUCCESSES.set(0);
 
         // SparkConf loads spark.* JVM properties. To use a remote collector, run this test with
-        // -Dspark.telemetry.endpoint=http://<alloy-host>:4317.
+        // -Dspark.telemetry.endpoint=http://<alloy-host>:4317 and
+        // -Dspark.telemetry.profile.endpoint=http://<alloy-host>:9999.
         SparkConf conf = new SparkConf()
                 .setMaster("local[2,2]")
                 .setAppName("telemetry-plugin-signals-smoke")
@@ -57,21 +63,32 @@ class SparkPluginSignalsSmokeTest {
                 .set("spark.telemetry.logs.minimum-level", "WARN")
                 .set("spark.telemetry.traces.enabled", "true")
                 .set("spark.telemetry.traces.task.sample-rate", "1.0")
-                .set("spark.telemetry.traces.slow-task-threshold", "300ms");
+                .set("spark.telemetry.traces.slow-task-threshold", "300ms")
+                .set("spark.telemetry.profiles.enabled", "true")
+                .set("spark.telemetry.profiles.event", "wall")
+                .set("spark.telemetry.profiles.interval", "20ms")
+                .set("spark.telemetry.profiles.upload-interval", "2s")
+                .set("spark.telemetry.profiles.async-profiler.extra-arguments",
+                        "cstack=vmx,memlimit=32m");
 
         JavaSparkContext context = new JavaSparkContext(conf);
         try {
+            assertTrue(await(PyroscopeAgent::isStarted, PROFILER_START_TIMEOUT_SECONDS),
+                    "Pyroscope profiler should start with the Spark plugin");
             LOGGER.warn("Starting all-signal Spark telemetry smoke scenarios");
             runSuccessfulTransformations(context);
             runFailureAndRetry(context);
             runSkewedTasks(context);
             runSkewedShuffle(context);
             runLargeObjectMemoryPressure(context);
-            sleepMillis(250L);
+            // Keep the application alive for at least one Pyroscope upload interval.
+            sleepMillis(3000L);
             LOGGER.warn("Completed all-signal Spark telemetry smoke scenarios");
         } finally {
             context.stop();
         }
+        assertTrue(await(() -> !PyroscopeAgent.isStarted(), PROFILER_STOP_TIMEOUT_SECONDS),
+                "Pyroscope profiler should stop with the Spark plugin");
     }
 
     private static void runSuccessfulTransformations(JavaSparkContext context) {
@@ -188,6 +205,15 @@ class SparkPluginSignalsSmokeTest {
         List<Integer> values = new ArrayList<Integer>(lastInclusive - first + 1);
         for (int value = first; value <= lastInclusive; value++) values.add(value);
         return values;
+    }
+
+    private static boolean await(BooleanSupplier condition, long timeoutSeconds) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) return true;
+            sleepMillis(25L);
+        }
+        return condition.getAsBoolean();
     }
 
     private static void sleepMillis(long millis) {
