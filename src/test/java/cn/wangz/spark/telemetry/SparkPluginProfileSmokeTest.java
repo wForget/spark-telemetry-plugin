@@ -20,7 +20,9 @@ class SparkPluginProfileSmokeTest {
         Assumptions.assumeTrue(Boolean.getBoolean("spark.telemetry.profile.smoke"),
                 "enable with -Dspark.telemetry.profile.smoke=true");
 
-        SparkConf conf = new SparkConf(false)
+        // SparkConf loads spark.* JVM properties. To use a remote collector, run this test with
+        // -Dspark.telemetry.profile.endpoint=http://<alloy-host>:9999.
+        SparkConf conf = new SparkConf()
                 .setMaster("local[2]")
                 .setAppName("telemetry-plugin-profile-smoke")
                 .set("spark.ui.enabled", "false")
@@ -30,7 +32,6 @@ class SparkPluginProfileSmokeTest {
                 .set("spark.telemetry.logs.enabled", "false")
                 .set("spark.telemetry.traces.enabled", "false")
                 .set("spark.telemetry.profiles.enabled", "true")
-                .set("spark.telemetry.profile.endpoint", "http://127.0.0.1:1")
                 .set("spark.telemetry.profiles.event", "wall")
                 .set("spark.telemetry.profiles.interval", "20ms")
                 .set("spark.telemetry.profiles.upload-interval", "2s")
