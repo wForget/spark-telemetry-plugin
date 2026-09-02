@@ -4,8 +4,16 @@ server:
   grpc_listen_port: 19098
   log_level: info
 
+limits:
+  # Keep profiles for 7 days in both the V2 and V1-compatible stores.
+  retention_period: 168h
+  compactor_blocks_retention_period: 168h
+
 metastore:
   address: localhost:19098
+  index:
+    cleanup_interval: 15m
+    cleanup_grace_period: 6h
 
 query_backend:
   address: localhost:19098

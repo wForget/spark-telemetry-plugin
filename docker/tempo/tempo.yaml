@@ -39,6 +39,9 @@ storage:
 
 overrides:
   defaults:
+    compaction:
+      # Keep traces for 3 days.
+      block_retention: 72h
     metrics_generator:
       processors: [span-metrics, service-graphs]
       generate_native_histograms: both

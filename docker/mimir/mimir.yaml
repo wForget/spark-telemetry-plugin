@@ -29,6 +29,10 @@ ingester:
       store: memberlist
     replication_factor: 1
 
+limits:
+  # Keep metrics for 7 days.
+  compactor_blocks_retention_period: 7d
+
 memberlist:
   bind_port: 17945
 
