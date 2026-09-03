@@ -19,6 +19,7 @@ class TelemetryConfigTest {
 
         assertEquals(TelemetryLogLevel.ERROR, config.minimumLogLevel());
         assertFalse(config.profilesEnabled());
+        assertFalse(config.profileStageLabelsEnabled());
         assertEquals("http://127.0.0.1:9999", config.profileEndpoint());
         assertEquals("ITIMER", config.profileEvent());
         assertEquals(Duration.ofMillis(10), config.profileInterval());
@@ -145,6 +146,7 @@ class TelemetryConfigTest {
         SparkConf spark = new SparkConf(false)
                 .set(TelemetryConfig.LOG_MINIMUM_LEVEL().key(), "warn")
                 .set(TelemetryConfig.PROFILES_ENABLED().key(), "true")
+                .set(TelemetryConfig.PROFILE_STAGE_LABELS_ENABLED().key(), "true")
                 .set(TelemetryConfig.PROFILE_EVENT().key(), "wall")
                 .set(TelemetryConfig.PROFILE_INTERVAL().key(), "20ms")
                 .set(TelemetryConfig.PROFILE_UPLOAD_INTERVAL().key(), "15s")
@@ -156,6 +158,7 @@ class TelemetryConfigTest {
 
         assertEquals(TelemetryLogLevel.WARN, executor.minimumLogLevel());
         assertTrue(executor.profilesEnabled());
+        assertTrue(executor.profileStageLabelsEnabled());
         assertEquals("WALL", executor.profileEvent());
         assertEquals(Duration.ofMillis(20), executor.profileInterval());
         assertEquals(Duration.ofSeconds(15), executor.profileUploadInterval());

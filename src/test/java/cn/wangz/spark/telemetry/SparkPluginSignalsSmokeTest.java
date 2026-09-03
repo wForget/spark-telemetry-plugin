@@ -4,6 +4,8 @@ import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricRegistry;
 import cn.wangz.spark.telemetry.signal.metrics.SparkMetricRegistry;
+import io.pyroscope.labels.pb.JfrLabels;
+import io.pyroscope.labels.v2.Pyroscope;
 import io.pyroscope.javaagent.PyroscopeAgent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -65,7 +67,9 @@ class SparkPluginSignalsSmokeTest {
                 .set("spark.telemetry.traces.task.sample-rate", "1.0")
                 .set("spark.telemetry.traces.slow-task-threshold", "300ms")
                 .set("spark.telemetry.profiles.enabled", "true")
-                .set("spark.telemetry.profiles.event", "wall")
+                .set("spark.telemetry.profiles.stage-labels.enabled", "true")
+                .set("spark.telemetry.profiles.event",
+                        System.getProperty("spark.telemetry.profiles.event", "wall"))
                 .set("spark.telemetry.profiles.interval", "20ms")
                 .set("spark.telemetry.profiles.upload-interval", "2s")
                 .set("spark.telemetry.profiles.async-profiler.extra-arguments",
@@ -76,6 +80,7 @@ class SparkPluginSignalsSmokeTest {
             assertTrue(await(PyroscopeAgent::isStarted, PROFILER_START_TIMEOUT_SECONDS),
                     "Pyroscope profiler should start with the Spark plugin");
             LOGGER.warn("Starting all-signal Spark telemetry smoke scenarios");
+            assertStageProfileLabels(context);
             runSuccessfulTransformations(context);
             runFailureAndRetry(context);
             runSkewedTasks(context);
@@ -89,6 +94,40 @@ class SparkPluginSignalsSmokeTest {
         }
         assertTrue(await(() -> !PyroscopeAgent.isStarted(), PROFILER_STOP_TIMEOUT_SECONDS),
                 "Pyroscope profiler should stop with the Spark plugin");
+    }
+
+    private static void assertStageProfileLabels(JavaSparkContext context) {
+        LOGGER.warn("Scenario: stage-scoped profile labels");
+        List<Boolean> matches = context.parallelize(Arrays.asList(1), 1)
+                .map(ignored -> currentStageProfileLabelsPresent())
+                .collect();
+
+        assertEquals(Arrays.asList(Boolean.TRUE), matches,
+                "the task thread should expose its current Spark stage to Pyroscope");
+    }
+
+    private static boolean currentStageProfileLabelsPresent() {
+        TaskContext task = TaskContext.get();
+        String expectedStageId = String.valueOf(task.stageId());
+        String expectedStageAttempt = String.valueOf(task.stageAttemptNumber());
+        JfrLabels.LabelsSnapshot snapshot = Pyroscope.LabelsWrapper.dump();
+        Map<Long, String> strings = snapshot.getStringsMap();
+        for (JfrLabels.Context profileContext : snapshot.getContextsMap().values()) {
+            boolean stageIdMatches = false;
+            boolean stageAttemptMatches = false;
+            for (Map.Entry<Long, Long> label : profileContext.getLabelsMap().entrySet()) {
+                String key = strings.get(label.getKey());
+                String value = strings.get(label.getValue());
+                if ("spark_stage_id".equals(key) && expectedStageId.equals(value)) {
+                    stageIdMatches = true;
+                } else if ("spark_stage_attempt".equals(key)
+                        && expectedStageAttempt.equals(value)) {
+                    stageAttemptMatches = true;
+                }
+            }
+            if (stageIdMatches && stageAttemptMatches) return true;
+        }
+        return false;
     }
 
     private static void runSuccessfulTransformations(JavaSparkContext context) {

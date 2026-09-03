@@ -32,6 +32,7 @@ public final class ProfilePipeline implements ProfileLifecycle {
     private final CountDownLatch startupFinished = new CountDownLatch(1);
     private volatile State state = State.STARTING;
     private volatile boolean closeRequested;
+    private volatile long shutdownDeadlineNanos = Long.MAX_VALUE;
     private Thread startupThread;
     private Thread stopThread;
 
@@ -120,16 +121,18 @@ public final class ProfilePipeline implements ProfileLifecycle {
                 } else if (closeRequested) {
                     state = State.STOPPING;
                     ownership.markStopping();
+                    PyroscopeProfileContext.beginOwnerShutdown();
                     stopImmediately = true;
                 } else {
                     state = State.OWNER;
                     ownership.markActive();
+                    PyroscopeProfileContext.activateOwner();
                 }
             }
             if (!started) {
                 LOG.warn("Pyroscope did not start; profiling is disabled for this Spark JVM");
             } else if (stopImmediately) {
-                stopAgentOnCurrentThread();
+                stopAgentOnCurrentThread(shutdownDeadlineNanos);
             }
         } catch (RuntimeException failure) {
             failStartup(failure);
@@ -156,12 +159,14 @@ public final class ProfilePipeline implements ProfileLifecycle {
         Thread localStop;
         boolean launchStop = false;
         synchronized (stateLock) {
+            if (!closeRequested) shutdownDeadlineNanos = deadline;
             closeRequested = true;
             if (state == State.OWNER) {
                 state = State.STOPPING;
                 ownership.markStopping();
+                PyroscopeProfileContext.beginOwnerShutdown();
                 stopThread = new Thread(new Runnable() {
-                    @Override public void run() { stopAgent(); }
+                    @Override public void run() { stopAgent(deadline); }
                 }, "spark-telemetry-profile-stop");
                 stopThread.setDaemon(true);
                 launchStop = true;
@@ -185,18 +190,22 @@ public final class ProfilePipeline implements ProfileLifecycle {
         }
     }
 
-    private void stopAgent() {
-        stopAgentOnCurrentThread();
+    private void stopAgent(long deadlineNanos) {
+        stopAgentOnCurrentThread(deadlineNanos);
     }
 
-    private void stopAgentOnCurrentThread() {
+    private void stopAgentOnCurrentThread(long deadlineNanos) {
         try {
+            if (!PyroscopeProfileContext.awaitScopes(deadlineNanos)) {
+                LOG.warn("Pyroscope shutdown reached its deadline with active stage profile scopes");
+            }
             agent.stop();
         } catch (RuntimeException failure) {
             LOG.warn("Pyroscope shutdown failed: {}", failure.toString());
         } catch (LinkageError failure) {
             LOG.warn("Pyroscope shutdown failed: {}", failure.toString());
         } finally {
+            PyroscopeProfileContext.beginOwnerShutdown();
             ownership.release();
             synchronized (stateLock) {
                 state = State.CLOSED;

@@ -363,6 +363,18 @@ startup and shutdown entirely. A JVM-global owner marker plus a system-classload
 prevents plugin copies loaded by different Spark classloaders from starting competing native
 profilers; the marker remains fail-safe if an owner cannot complete shutdown.
 
+When stage profile labels are enabled, each Executor task callback opens a thread-scoped Pyroscope
+context containing `spark_stage_id` and `spark_stage_attempt`, then closes it on task success or
+failure. Concurrent tasks therefore retain independent labels even when they belong to different
+stages. Static app and Executor labels still identify the profile series. Driver, GC, shuffle helper,
+and other background-thread samples remain unlabelled because a Driver stage event is not an
+execution context and task context is not safely propagated to unrelated threads. In local mode the
+Executor may attach scoped contexts to the Driver-owned agent but never owns its lifecycle. This
+attachment requires the standard shared plugin classloader; an isolated Executor-side copy cannot
+observe the owner's gate and safely degrades to unlabelled samples. Closed context metadata is
+retained by the client until the next profile dump, so transient metadata grows with task rate and
+upload interval even when label cardinality is otherwise controlled.
+
 The deployment environment is required not to contain another `io.pyroscope.*` implementation.
 Applications must not add another Pyroscope dependency, use `-javaagent`, start a second agent from
 code, or repackage the plugin into another fat JAR.
@@ -497,6 +509,7 @@ spark.telemetry.metrics.enabled=true
 spark.telemetry.logs.enabled=true
 spark.telemetry.traces.enabled=true
 spark.telemetry.profiles.enabled=true
+spark.telemetry.profiles.stage-labels.enabled=false
 
 spark.telemetry.traces.task.sample-rate=0.01
 spark.telemetry.traces.slow-task-threshold=30s
@@ -526,7 +539,8 @@ Configuration precedence:
 Secrets are deliberately excluded from this model.
 
 Profile sampling intervals, upload intervals, Java stack depth, allocation/lock thresholds, queue
-capacity, and async-profiler memory are bounded. Raw async-profiler customization is allowlisted to
+capacity, and async-profiler memory are bounded. Stage labels are opt-in because long-running jobs
+can create unbounded stage label values. Raw async-profiler customization is allowlisted to
 validated `cstack` and `memlimit` settings so alternate CLI aliases cannot override lifecycle,
 output, signal, or sampling configuration.
 

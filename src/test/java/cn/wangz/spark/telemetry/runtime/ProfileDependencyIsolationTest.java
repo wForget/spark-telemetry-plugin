@@ -21,6 +21,7 @@ class ProfileDependencyIsolationTest {
         values.put(TelemetryConfig.LOGS_ENABLED().key(), "false");
         values.put(TelemetryConfig.TRACES_ENABLED().key(), "false");
         values.put(TelemetryConfig.PROFILES_ENABLED().key(), "true");
+        values.put(TelemetryConfig.PROFILE_STAGE_LABELS_ENABLED().key(), "true");
         TelemetryConfig config = TelemetryConfig.from(values, new HashMap<String, String>())
                 .withApplication("isolation-test", "application-isolation");
         ResourceIdentity identity = ResourceIdentity.driver(config, "application-isolation");

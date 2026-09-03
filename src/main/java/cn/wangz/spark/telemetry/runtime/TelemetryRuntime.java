@@ -4,7 +4,10 @@ import com.codahale.metrics.MetricRegistry;
 import cn.wangz.spark.telemetry.signal.logs.LogPipeline;
 import cn.wangz.spark.telemetry.signal.metrics.SparkMetricProducer;
 import cn.wangz.spark.telemetry.signal.profiles.ProfileLifecycle;
+import cn.wangz.spark.telemetry.signal.profiles.ProfileContext;
 import cn.wangz.spark.telemetry.signal.profiles.ProfilePipeline;
+import cn.wangz.spark.telemetry.signal.profiles.ProfileScope;
+import cn.wangz.spark.telemetry.signal.profiles.PyroscopeProfileContext;
 import cn.wangz.spark.telemetry.signal.traces.TaskFilteringSpanProcessor;
 import cn.wangz.spark.telemetry.signal.traces.TracePipeline;
 import cn.wangz.spark.telemetry.signal.traces.TraceSink;
@@ -47,6 +50,7 @@ public final class TelemetryRuntime implements AutoCloseable {
     private final TracePipeline traces;
     private final LogPipeline logs;
     private final ProfileLifecycle profiles;
+    private final ProfileContext profileContext;
     private final AtomicReference<State> state = new AtomicReference<State>(State.RUNNING);
 
     private TelemetryRuntime(
@@ -56,7 +60,8 @@ public final class TelemetryRuntime implements AutoCloseable {
             SdkLoggerProvider loggerProvider,
             TracePipeline traces,
             LogPipeline logs,
-            ProfileLifecycle profiles) {
+            ProfileLifecycle profiles,
+            ProfileContext profileContext) {
         this.config = config;
         this.meterProvider = meterProvider;
         this.tracerProvider = tracerProvider;
@@ -64,6 +69,7 @@ public final class TelemetryRuntime implements AutoCloseable {
         this.traces = traces;
         this.logs = logs;
         this.profiles = profiles;
+        this.profileContext = profileContext;
     }
 
     public static TelemetryRuntime create(
@@ -81,6 +87,8 @@ public final class TelemetryRuntime implements AutoCloseable {
         SdkLoggerProvider loggerProvider = buildLoggerProvider(config, identity);
         Tracer tracer = tracerProvider.get(INSTRUMENTATION_SCOPE);
         Logger logger = loggerProvider.get(INSTRUMENTATION_SCOPE);
+        ProfileLifecycle profiles = buildProfilePipeline(config, identity, profilesAllowed);
+        ProfileContext profileContext = buildProfileContext(config);
         return new TelemetryRuntime(
                 config,
                 meterProvider,
@@ -88,12 +96,24 @@ public final class TelemetryRuntime implements AutoCloseable {
                 loggerProvider,
                 new TracePipeline(tracer, config.tracesEnabled()),
                 new LogPipeline(logger, config.minimumLogLevel()),
-                buildProfilePipeline(config, identity, profilesAllowed));
+                profiles,
+                profileContext);
     }
 
     public LogPipeline logs() { return logs; }
     public TraceSink traces() { return traces; }
     public boolean isRunning() { return state.get() == State.RUNNING; }
+
+    public ProfileScope openStageProfileScope(int stageId, int stageAttempt) {
+        if (state.get() != State.RUNNING) return ProfileScope.NONE;
+        try {
+            return profileContext.openStage(stageId, stageAttempt);
+        } catch (RuntimeException ignored) {
+            return ProfileScope.NONE;
+        } catch (LinkageError ignored) {
+            return ProfileScope.NONE;
+        }
+    }
 
     public void close(Duration timeout) {
         if (!state.compareAndSet(State.RUNNING, State.CLOSING)) return;
@@ -209,6 +229,17 @@ public final class TelemetryRuntime implements AutoCloseable {
         } catch (LinkageError failure) {
             reportProfileFailure(failure);
             return null;
+        }
+    }
+
+    private static ProfileContext buildProfileContext(TelemetryConfig config) {
+        if (!config.profileStageLabelsEnabled()) return ProfileContext.NONE;
+        try {
+            return PyroscopeProfileContext.create();
+        } catch (RuntimeException failure) {
+            return ProfileContext.NONE;
+        } catch (LinkageError failure) {
+            return ProfileContext.NONE;
         }
     }
 

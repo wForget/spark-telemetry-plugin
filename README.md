@@ -10,6 +10,7 @@ Spark Driver / Executor 进程内的 fail-open 遥测插件。Metrics、logs、t
 - 保留原日志输出的 Log4j2 → OTLP logs bridge，含递归保护和 Spark MDC
 - 四信号独立异步处理：OTel metrics reader、trace/log batch processor、Pyroscope Java Agent
 - 在拿到真实 app/executor identity 后，以 `PyroscopeAgent.start(Config)` 异步启动 async-profiler
+- 可选地在 Executor task 线程安装 `spark_stage_id` / `spark_stage_attempt` 动态 profile 标签
 - 统一 Spark 配置、环境变量优先级、严格/按信号 fail-open 校验
 - 幂等且共享截止时间的有界 shutdown
 - OpenTelemetry、Protobuf、OkHttp、Okio、Kotlin 依赖 shade + relocate；Pyroscope agent 连同 native 库内嵌但保持原包名
@@ -43,6 +44,7 @@ spark-submit \
   --conf spark.plugins=cn.wangz.spark.telemetry.SparkTelemetryPlugin \
   --conf spark.telemetry.endpoint=http://127.0.0.1:4317 \
   --conf spark.telemetry.profiles.enabled=true \
+  --conf spark.telemetry.profiles.stage-labels.enabled=true \
   --conf spark.telemetry.profile.endpoint=http://127.0.0.1:9999 \
   --conf spark.telemetry.resource.service.name=orders-etl \
   --conf spark.telemetry.resource.service.namespace=data-platform \
@@ -62,7 +64,11 @@ Metrics、logs、traces 共享同一个 OTLP gRPC base endpoint，插件不拼�
 
 不要再分发独立 Pyroscope JAR，也不要通过 `-javaagent`、应用代码或二次 fat-JAR 重打包引入另一份 `io.pyroscope.*`；当前部署约定运行环境中不存在其他 Pyroscope 类。同一 JVM 若已有 agent，则视为外部所有，不修改也不停止它。Local 模式的 Driver 与 Executor 共用一个 JVM，只由 Driver 启动一次，`spark_role=local_jvm` 表示 profile 同时包含 Driver 和 task 执行。
 
-与 premain 方式相比，代码启动看不到 Spark/JVM 最早启动阶段，也不会执行 Pyroscope 的 bootstrap API 注入；当前只使用 continuous profiling 和静态标签，因此不依赖该能力。若后续加入跨 classloader 的动态标签或 span-profile correlation，需要单独验证或重新评估 `-javaagent`。
+与 premain 方式相比，代码启动看不到 Spark/JVM 最早启动阶段，也不会执行 Pyroscope 的 bootstrap API 注入；continuous profiling、静态身份标签和插件显式创建的 stage scoped context 不依赖该能力。若后续加入通用跨线程标签传播或 span-profile correlation，需要单独验证或重新评估 `-javaagent`。
+
+`spark.telemetry.profiles.stage-labels.enabled=true` 时，Executor 在每个 task 开始和结束之间给当前线程安装 `spark_stage_id` 与 `spark_stage_attempt` 动态标签。它允许按 app/stage 聚合多个 Executor 的 profile，但不会把标签传播到 GC、shuffle helper 等后台线程；短于采样间隔的 task 也可能没有样本。该选项默认关闭，因为长时间运行的 Structured Streaming 应用会持续产生 stage ID，增加 Pyroscope 标签基数；客户端还会把已关闭 context 的元数据暂存到下一个 profile dump，峰值约随 task 速率 × upload interval 增长。Local 模式仍只由 Driver 管理 agent 生命周期，Executor 在标准同一 classloader 部署下切换 task scoped context；若 Spark 隔离了插件 classloader，Executor 会安全退化为无 stage 标签。
+
+仓库自带的 `Spark Application Detail` dashboard 在 flamegraph 上提供 profile type、`Profile stage ID (regex)` 和 `Profile stage attempt (regex)` 选择器，stage/attempt 默认 `.*` 保留全部样本；输入 `91` / `0` 即可只看 stage 91 的首次尝试。`profiles.event=CPU|ITIMER` 使用默认的 `CPU` profile type，`profiles.event=WALL` 需在 dashboard 中选择 `Wall`。在 Grafana Explore 中也可直接使用 `{service_name="orders-etl",spark_app_id="application-123",spark_stage_id="91",spark_stage_attempt="0"}` 作为 Pyroscope label selector，避免同一 service 的多次 application 运行相互混合。
 
 默认事件是无需 Linux `perf_event_open` 权限的 `itimer`。若运行环境已验证 perf 权限，可设置 `spark.telemetry.profiles.event=cpu` 使用硬件 CPU 事件并同时采集 Java、JVM、kernel 与 native 调用栈；native 栈展开可通过 `spark.telemetry.profiles.async-profiler.extra-arguments=cstack=dwarf,memlimit=128m` 调整。Allocation 和 lock profiling 默认关闭，分别通过 `profiles.alloc`、`profiles.lock` 显式开启。为限制 native CPU/内存和信号风险，extra arguments 只允许 `cstack=fp|dwarf|vm|vmx|no` 与 `memlimit=16m..1g`；未指定 memlimit 时自动追加 `128m`。
 
@@ -81,6 +87,7 @@ Profile startup 涉及 native 库提取和加载，JVM `java.io.tmpdir` 需要�
 | `spark.telemetry.logs.enabled` | `true` | logs 开关 |
 | `spark.telemetry.traces.enabled` | `true` | traces 开关 |
 | `spark.telemetry.profiles.enabled` | `false` | continuous profiles 开关；agent 已内嵌在插件 JAR |
+| `spark.telemetry.profiles.stage-labels.enabled` | `false` | 为 Executor task profile 添加可筛选的 stage ID/attempt 动态标签 |
 | `spark.telemetry.profile.endpoint` | `http://127.0.0.1:9999` | Alloy Pyroscope HTTP base endpoint |
 | `spark.telemetry.profiles.event` | `ITIMER` | 主采样事件：`ITIMER`、`CPU`、`WALL` |
 | `spark.telemetry.profiles.interval` | `10ms` | async-profiler 采样间隔，范围 `5ms..1s` |

@@ -24,6 +24,7 @@ final class TelemetryConfig private (
   def logsEnabled(): Boolean = enabled() && conf.get(LOGS_ENABLED)
   def tracesEnabled(): Boolean = enabled() && conf.get(TRACES_ENABLED)
   def profilesEnabled(): Boolean = enabled() && conf.get(PROFILES_ENABLED)
+  def profileStageLabelsEnabled(): Boolean = profilesEnabled() && conf.get(PROFILE_STAGE_LABELS_ENABLED)
   def logCaptureEnabled(): Boolean = logsEnabled() && conf.get(LOG_CAPTURE)
   def endpoint(): String = conf.get(ENDPOINT)
   def profileEndpoint(): String = conf.get(PROFILE_ENDPOINT)
@@ -82,6 +83,9 @@ object TelemetryConfig {
   val TRACES_ENABLED: ConfigEntry[Boolean] = signalEnabled("traces")
   val PROFILES_ENABLED: ConfigEntry[Boolean] =
     boolean("profiles.enabled", "Enable Pyroscope continuous profiling", default = false)
+  val PROFILE_STAGE_LABELS_ENABLED: ConfigEntry[Boolean] =
+    boolean("profiles.stage-labels.enabled",
+      "Add dynamic Spark stage labels to Executor task profiles", default = false)
   val PROFILE_ENDPOINT: ConfigEntry[String] =
     text("profile.endpoint", "Alloy Pyroscope HTTP endpoint", "http://127.0.0.1:9999")
   val PROFILE_EVENT: ConfigEntry[String] =
@@ -161,6 +165,7 @@ object TelemetryConfig {
   private val UserEntries: Seq[ConfigEntry[_]] = Seq(
     ENABLED, STRICT, ENDPOINT,
     METRICS_ENABLED, LOGS_ENABLED, TRACES_ENABLED, PROFILES_ENABLED,
+    PROFILE_STAGE_LABELS_ENABLED,
     PROFILE_ENDPOINT, PROFILE_EVENT, PROFILE_INTERVAL, PROFILE_UPLOAD_INTERVAL,
     PROFILE_JAVA_STACK_DEPTH, PROFILES_QUEUE_CAPACITY, PROFILE_ALLOC, PROFILE_LOCK,
     ASYNC_PROFILER_EXTRA_ARGUMENTS,
@@ -338,7 +343,7 @@ object TelemetryConfig {
     validateSignal(conf, strict, TRACES_ENABLED,
       Seq(TRACES_QUEUE_CAPACITY, TASK_SAMPLE_RATE, SLOW_TASK_THRESHOLD))
     validateSignal(conf, strict, PROFILES_ENABLED,
-      Seq(PROFILE_EVENT, PROFILE_INTERVAL, PROFILE_UPLOAD_INTERVAL,
+      Seq(PROFILE_STAGE_LABELS_ENABLED, PROFILE_EVENT, PROFILE_INTERVAL, PROFILE_UPLOAD_INTERVAL,
         PROFILE_JAVA_STACK_DEPTH, PROFILES_QUEUE_CAPACITY, PROFILE_ALLOC, PROFILE_LOCK,
         ASYNC_PROFILER_EXTRA_ARGUMENTS))
 
