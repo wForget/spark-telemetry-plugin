@@ -4,3 +4,5 @@ target/
 .scala-build/
 *.iml
 .DS_Store
+
+DEVELOPMENT.md
