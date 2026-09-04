@@ -11,6 +11,16 @@ public final class StageTaskMetrics {
     private final long shuffleFetchWaitTimeMillis;
     private final long shuffleWriteBytes;
     private final long shuffleWriteTimeNanos;
+    private final boolean timelineAvailable;
+    private final long schedulerDelayMillis;
+    private final long executorDeserializeTimeMillis;
+    private final long shuffleReadTimeMillis;
+    private final long executorComputingTimeMillis;
+    private final long shuffleWriteTimeMillis;
+    private final long resultSerializationTimeMillis;
+    private final long gettingResultTimeMillis;
+    private final long observedTaskAttempts;
+    private final long includedTaskAttempts;
 
     public StageTaskMetrics(
             long executorRunTimeMillis,
@@ -22,6 +32,89 @@ public final class StageTaskMetrics {
             long shuffleFetchWaitTimeMillis,
             long shuffleWriteBytes,
             long shuffleWriteTimeNanos) {
+        this(
+                executorRunTimeMillis,
+                memoryBytesSpilled,
+                diskBytesSpilled,
+                inputBytesRead,
+                outputBytesWritten,
+                shuffleReadBytes,
+                shuffleFetchWaitTimeMillis,
+                shuffleWriteBytes,
+                shuffleWriteTimeNanos,
+                false,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L);
+    }
+
+    public StageTaskMetrics(
+            long executorRunTimeMillis,
+            long memoryBytesSpilled,
+            long diskBytesSpilled,
+            long inputBytesRead,
+            long outputBytesWritten,
+            long shuffleReadBytes,
+            long shuffleFetchWaitTimeMillis,
+            long shuffleWriteBytes,
+            long shuffleWriteTimeNanos,
+            long schedulerDelayMillis,
+            long executorDeserializeTimeMillis,
+            long shuffleReadTimeMillis,
+            long executorComputingTimeMillis,
+            long shuffleWriteTimeMillis,
+            long resultSerializationTimeMillis,
+            long gettingResultTimeMillis,
+            long observedTaskAttempts,
+            long includedTaskAttempts) {
+        this(
+                executorRunTimeMillis,
+                memoryBytesSpilled,
+                diskBytesSpilled,
+                inputBytesRead,
+                outputBytesWritten,
+                shuffleReadBytes,
+                shuffleFetchWaitTimeMillis,
+                shuffleWriteBytes,
+                shuffleWriteTimeNanos,
+                includedTaskAttempts > 0L,
+                schedulerDelayMillis,
+                executorDeserializeTimeMillis,
+                shuffleReadTimeMillis,
+                executorComputingTimeMillis,
+                shuffleWriteTimeMillis,
+                resultSerializationTimeMillis,
+                gettingResultTimeMillis,
+                observedTaskAttempts,
+                includedTaskAttempts);
+    }
+
+    private StageTaskMetrics(
+            long executorRunTimeMillis,
+            long memoryBytesSpilled,
+            long diskBytesSpilled,
+            long inputBytesRead,
+            long outputBytesWritten,
+            long shuffleReadBytes,
+            long shuffleFetchWaitTimeMillis,
+            long shuffleWriteBytes,
+            long shuffleWriteTimeNanos,
+            boolean timelineAvailable,
+            long schedulerDelayMillis,
+            long executorDeserializeTimeMillis,
+            long shuffleReadTimeMillis,
+            long executorComputingTimeMillis,
+            long shuffleWriteTimeMillis,
+            long resultSerializationTimeMillis,
+            long gettingResultTimeMillis,
+            long observedTaskAttempts,
+            long includedTaskAttempts) {
         this.executorRunTimeMillis = executorRunTimeMillis;
         this.memoryBytesSpilled = memoryBytesSpilled;
         this.diskBytesSpilled = diskBytesSpilled;
@@ -31,6 +124,16 @@ public final class StageTaskMetrics {
         this.shuffleFetchWaitTimeMillis = shuffleFetchWaitTimeMillis;
         this.shuffleWriteBytes = shuffleWriteBytes;
         this.shuffleWriteTimeNanos = shuffleWriteTimeNanos;
+        this.timelineAvailable = timelineAvailable;
+        this.schedulerDelayMillis = schedulerDelayMillis;
+        this.executorDeserializeTimeMillis = executorDeserializeTimeMillis;
+        this.shuffleReadTimeMillis = shuffleReadTimeMillis;
+        this.executorComputingTimeMillis = executorComputingTimeMillis;
+        this.shuffleWriteTimeMillis = shuffleWriteTimeMillis;
+        this.resultSerializationTimeMillis = resultSerializationTimeMillis;
+        this.gettingResultTimeMillis = gettingResultTimeMillis;
+        this.observedTaskAttempts = observedTaskAttempts;
+        this.includedTaskAttempts = includedTaskAttempts;
     }
 
     public long executorRunTimeMillis() { return executorRunTimeMillis; }
@@ -50,4 +153,24 @@ public final class StageTaskMetrics {
     public long shuffleWriteBytes() { return shuffleWriteBytes; }
 
     public long shuffleWriteTimeNanos() { return shuffleWriteTimeNanos; }
+
+    public boolean timelineAvailable() { return timelineAvailable; }
+
+    public long schedulerDelayMillis() { return schedulerDelayMillis; }
+
+    public long executorDeserializeTimeMillis() { return executorDeserializeTimeMillis; }
+
+    public long shuffleReadTimeMillis() { return shuffleReadTimeMillis; }
+
+    public long executorComputingTimeMillis() { return executorComputingTimeMillis; }
+
+    public long shuffleWriteTimeMillis() { return shuffleWriteTimeMillis; }
+
+    public long resultSerializationTimeMillis() { return resultSerializationTimeMillis; }
+
+    public long gettingResultTimeMillis() { return gettingResultTimeMillis; }
+
+    public long observedTaskAttempts() { return observedTaskAttempts; }
+
+    public long includedTaskAttempts() { return includedTaskAttempts; }
 }

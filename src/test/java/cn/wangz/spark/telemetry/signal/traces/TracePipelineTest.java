@@ -92,13 +92,16 @@ class TracePipelineTest {
         SdkTracerProvider provider = provider(processor);
         TracePipeline traces = new TracePipeline(provider.get("test"), true);
         StageTaskMetrics metrics = new StageTaskMetrics(
-                101L, 102L, 103L, 104L, 105L, 106L, 107L, 108L, 109L);
+                101L, 102L, 103L, 104L, 105L, 106L, 107L, 108L, 109L,
+                110L, 111L, 112L, 113L, 114L, 115L, 116L, 118L, 117L);
 
         traces.stageStarted(2, 1, 3L);
         traces.stageEnded(2, 1, 13L, "success", "", metrics);
 
         ReadableSpan ended = processor.lastEnded();
         assertEquals("spark.stage", ended.getName());
+        assertEquals("Stage 2 / attempt 1 (tasks 117/118)", ended.getAttribute(AttributeKey.stringKey(
+                "spark.stage.label")));
         assertEquals(Long.valueOf(101L), ended.getAttribute(AttributeKey.longKey(
                 "spark.stage.task_metrics.executor_run_time_ms")));
         assertEquals(Long.valueOf(102L), ended.getAttribute(AttributeKey.longKey(
@@ -117,6 +120,59 @@ class TracePipelineTest {
                 "spark.stage.task_metrics.shuffle.write.bytes_written")));
         assertEquals(Long.valueOf(109L), ended.getAttribute(AttributeKey.longKey(
                 "spark.stage.task_metrics.shuffle.write.write_time_ns")));
+        assertEquals(Long.valueOf(110L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.scheduler_delay_ms")));
+        assertEquals(Long.valueOf(111L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.executor_deserialize_time_ms")));
+        assertEquals(Long.valueOf(112L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.shuffle_read_time_ms")));
+        assertEquals(Long.valueOf(113L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.executor_computing_time_ms")));
+        assertEquals(Long.valueOf(114L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.shuffle_write_time_ms")));
+        assertEquals(Long.valueOf(115L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.result_serialization_time_ms")));
+        assertEquals(Long.valueOf(116L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.getting_result_time_ms")));
+        assertEquals(Long.valueOf(118L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.observed_task_attempts")));
+        assertEquals(Long.valueOf(117L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.included_task_attempts")));
+        provider.shutdown().join(1, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void stageSpanOmitsTimelineMetricsWhenTaskBreakdownIsUnavailable() {
+        CountingSpanProcessor processor = new CountingSpanProcessor();
+        SdkTracerProvider provider = provider(processor);
+        TracePipeline traces = new TracePipeline(provider.get("test"), true);
+        StageTaskMetrics metrics = new StageTaskMetrics(
+                101L, 102L, 103L, 104L, 105L, 106L, 107L, 108L, 109L);
+
+        traces.stageStarted(2, 1, 3L);
+        traces.stageEnded(2, 1, 13L, "success", "", metrics);
+
+        ReadableSpan ended = processor.lastEnded();
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.scheduler_delay_ms")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.executor_deserialize_time_ms")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.shuffle_read_time_ms")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.executor_computing_time_ms")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.shuffle_write_time_ms")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.result_serialization_time_ms")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.getting_result_time_ms")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.observed_task_attempts")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.timeline.included_task_attempts")));
+        assertEquals("Stage 2 / attempt 1", ended.getAttribute(AttributeKey.stringKey(
+                "spark.stage.label")));
         provider.shutdown().join(1, TimeUnit.SECONDS);
     }
 

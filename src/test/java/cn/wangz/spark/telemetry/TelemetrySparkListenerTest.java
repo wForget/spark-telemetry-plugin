@@ -7,7 +7,10 @@ import cn.wangz.spark.telemetry.signal.traces.TaskSpanHandle;
 import cn.wangz.spark.telemetry.signal.traces.TraceSink;
 import org.apache.spark.executor.TaskMetrics;
 import org.apache.spark.scheduler.SparkListenerStageCompleted;
+import org.apache.spark.scheduler.SparkListenerStageSubmitted;
+import org.apache.spark.scheduler.SparkListenerTaskEnd;
 import org.apache.spark.scheduler.StageInfo;
+import org.apache.spark.scheduler.TaskInfo;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -59,9 +62,141 @@ class TelemetrySparkListenerTest {
         assertNull(traces.stageTaskMetrics);
     }
 
+    @Test
+    void aggregatesSparkUiTimelineMetricsByStageAttempt() {
+        TaskMetrics metrics = new TaskMetrics();
+        metrics.setExecutorDeserializeTime(10L);
+        metrics.setExecutorRunTime(150L);
+        metrics.setResultSerializationTime(5L);
+        metrics.shuffleReadMetrics().incFetchWaitTime(30L);
+        metrics.shuffleWriteMetrics().incWriteTime(20_900_000L);
+        RecordingTraceSink traces = new RecordingTraceSink();
+        DeferredTelemetrySink sink = new DeferredTelemetrySink(4);
+        sink.bind(traces);
+        TelemetrySparkListener listener = new TelemetrySparkListener(sink);
+        StageInfo stage = stageInfo(2, metrics);
+        listener.onStageSubmitted(new SparkListenerStageSubmitted(stage, null));
+
+        TaskInfo task = taskInfo(100L, 300L, 280L);
+        listener.onTaskEnd(new SparkListenerTaskEnd(
+                2, 1, "ResultTask", null, task, null, metrics));
+        listener.onTaskEnd(new SparkListenerTaskEnd(
+                2, 1, "ResultTask", null, taskInfo(300L, 310L, 0L), null, null));
+        listener.onStageCompleted(new SparkListenerStageCompleted(stage));
+
+        StageTaskMetrics snapshot = traces.stageTaskMetrics;
+        assertEquals(true, snapshot.timelineAvailable());
+        assertEquals(15L, snapshot.schedulerDelayMillis());
+        assertEquals(10L, snapshot.executorDeserializeTimeMillis());
+        assertEquals(30L, snapshot.shuffleReadTimeMillis());
+        assertEquals(100L, snapshot.executorComputingTimeMillis());
+        assertEquals(20L, snapshot.shuffleWriteTimeMillis());
+        assertEquals(5L, snapshot.resultSerializationTimeMillis());
+        assertEquals(20L, snapshot.gettingResultTimeMillis());
+        assertEquals(2L, snapshot.observedTaskAttempts());
+        assertEquals(1L, snapshot.includedTaskAttempts());
+    }
+
+    @Test
+    void isolatesTimelineMetricsByStageAttemptAndIgnoresLateTaskEvents() {
+        TaskMetrics metrics = new TaskMetrics();
+        metrics.setExecutorRunTime(8L);
+        RecordingTraceSink traces = new RecordingTraceSink();
+        DeferredTelemetrySink sink = new DeferredTelemetrySink(4);
+        sink.bind(traces);
+        TelemetrySparkListener listener = new TelemetrySparkListener(sink);
+        StageInfo attemptZero = stageInfo(2, 0, metrics);
+        StageInfo attemptOne = stageInfo(2, 1, metrics);
+        listener.onStageSubmitted(new SparkListenerStageSubmitted(attemptZero, null));
+        listener.onStageSubmitted(new SparkListenerStageSubmitted(attemptOne, null));
+
+        listener.onTaskEnd(new SparkListenerTaskEnd(
+                2, 1, "ResultTask", null, taskInfo(0L, 10L, 0L), null, metrics));
+        listener.onStageCompleted(new SparkListenerStageCompleted(attemptZero));
+        assertEquals(false, traces.stageTaskMetrics.timelineAvailable());
+
+        listener.onTaskEnd(new SparkListenerTaskEnd(
+                2, 0, "ResultTask", null, taskInfo(0L, 10L, 0L), null, metrics));
+        listener.onStageCompleted(new SparkListenerStageCompleted(attemptOne));
+        assertEquals(true, traces.stageTaskMetrics.timelineAvailable());
+        assertEquals(2L, traces.stageTaskMetrics.schedulerDelayMillis());
+        assertEquals(8L, traces.stageTaskMetrics.executorComputingTimeMillis());
+    }
+
+    @Test
+    void omitsTimelineWhenTaskMetricsAreUnavailable() {
+        TaskMetrics stageMetrics = new TaskMetrics();
+        RecordingTraceSink traces = new RecordingTraceSink();
+        DeferredTelemetrySink sink = new DeferredTelemetrySink(4);
+        sink.bind(traces);
+        TelemetrySparkListener listener = new TelemetrySparkListener(sink);
+        StageInfo stage = stageInfo(2, stageMetrics);
+        listener.onStageSubmitted(new SparkListenerStageSubmitted(stage, null));
+
+        listener.onTaskEnd(new SparkListenerTaskEnd(
+                2, 1, "ResultTask", null, taskInfo(0L, 10L, 0L), null, null));
+        listener.onStageCompleted(new SparkListenerStageCompleted(stage));
+
+        assertEquals(false, traces.stageTaskMetrics.timelineAvailable());
+    }
+
+    @Test
+    void capsExecutorComputingAtSparkUiAdjustedRuntime() {
+        TaskMetrics metrics = new TaskMetrics();
+        metrics.setExecutorRunTime(150L);
+        RecordingTraceSink traces = new RecordingTraceSink();
+        DeferredTelemetrySink sink = new DeferredTelemetrySink(4);
+        sink.bind(traces);
+        TelemetrySparkListener listener = new TelemetrySparkListener(sink);
+        StageInfo stage = stageInfo(2, metrics);
+        listener.onStageSubmitted(new SparkListenerStageSubmitted(stage, null));
+
+        listener.onTaskEnd(new SparkListenerTaskEnd(
+                2, 1, "ResultTask", null, taskInfo(100L, 200L, 0L), null, metrics));
+        listener.onStageCompleted(new SparkListenerStageCompleted(stage));
+
+        assertEquals(0L, traces.stageTaskMetrics.schedulerDelayMillis());
+        assertEquals(100L, traces.stageTaskMetrics.executorComputingTimeMillis());
+    }
+
+    @Test
+    void floorsShuffleWriteMillisBeforeAggregatingTasks() {
+        TaskMetrics metrics = new TaskMetrics();
+        metrics.setExecutorRunTime(1L);
+        metrics.shuffleWriteMetrics().incWriteTime(900_000L);
+        RecordingTraceSink traces = new RecordingTraceSink();
+        DeferredTelemetrySink sink = new DeferredTelemetrySink(4);
+        sink.bind(traces);
+        TelemetrySparkListener listener = new TelemetrySparkListener(sink);
+        StageInfo stage = stageInfo(2, metrics);
+        listener.onStageSubmitted(new SparkListenerStageSubmitted(stage, null));
+
+        listener.onTaskEnd(new SparkListenerTaskEnd(
+                2, 1, "ShuffleMapTask", null, taskInfo(100L, 101L, 0L), null, metrics));
+        listener.onTaskEnd(new SparkListenerTaskEnd(
+                2, 1, "ShuffleMapTask", null, taskInfo(200L, 201L, 0L), null, metrics));
+        listener.onStageCompleted(new SparkListenerStageCompleted(stage));
+
+        assertEquals(0L, traces.stageTaskMetrics.shuffleWriteTimeMillis());
+        assertEquals(2L, traces.stageTaskMetrics.executorComputingTimeMillis());
+        assertEquals(2L, traces.stageTaskMetrics.includedTaskAttempts());
+    }
+
+    private static TaskInfo taskInfo(long launchTime, long finishTime, long gettingResultTime) {
+        TaskInfo task = new TaskInfo(
+                1L, 0, 0, 0, launchTime, "driver", "localhost", null, false);
+        task.finishTime_$eq(finishTime);
+        task.gettingResultTime_$eq(gettingResultTime);
+        return task;
+    }
+
     private static StageInfo stageInfo(int stageId, TaskMetrics metrics) {
+        return stageInfo(stageId, 1, metrics);
+    }
+
+    private static StageInfo stageInfo(int stageId, int attempt, TaskMetrics metrics) {
         return new StageInfo(
-                stageId, 1, "test stage", 1, null, null, "", metrics,
+                stageId, attempt, "test stage", 1, null, null, "", metrics,
                 null, null, 0, false, 0);
     }
 

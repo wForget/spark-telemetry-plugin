@@ -39,6 +39,24 @@ public final class TracePipeline implements TraceSink {
             AttributeKey.longKey("spark.stage.task_metrics.shuffle.write.bytes_written");
     private static final AttributeKey<Long> SPARK_STAGE_TASK_SHUFFLE_WRITE_TIME =
             AttributeKey.longKey("spark.stage.task_metrics.shuffle.write.write_time_ns");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_SCHEDULER_DELAY =
+            AttributeKey.longKey("spark.stage.task_metrics.timeline.scheduler_delay_ms");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_EXECUTOR_DESERIALIZE_TIME =
+            AttributeKey.longKey("spark.stage.task_metrics.timeline.executor_deserialize_time_ms");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_SHUFFLE_READ_TIME =
+            AttributeKey.longKey("spark.stage.task_metrics.timeline.shuffle_read_time_ms");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_EXECUTOR_COMPUTING_TIME =
+            AttributeKey.longKey("spark.stage.task_metrics.timeline.executor_computing_time_ms");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_SHUFFLE_WRITE_TIME_MILLIS =
+            AttributeKey.longKey("spark.stage.task_metrics.timeline.shuffle_write_time_ms");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_RESULT_SERIALIZATION_TIME =
+            AttributeKey.longKey("spark.stage.task_metrics.timeline.result_serialization_time_ms");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_GETTING_RESULT_TIME =
+            AttributeKey.longKey("spark.stage.task_metrics.timeline.getting_result_time_ms");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_TIMELINE_OBSERVED_ATTEMPTS =
+            AttributeKey.longKey("spark.stage.task_metrics.timeline.observed_task_attempts");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_TIMELINE_INCLUDED_ATTEMPTS =
+            AttributeKey.longKey("spark.stage.task_metrics.timeline.included_task_attempts");
     private static final AttributeKey<Long> SPARK_TASK_ATTEMPT_ID =
             AttributeKey.longKey("spark.task.attempt.id");
 
@@ -121,6 +139,8 @@ public final class TracePipeline implements TraceSink {
             SpanBuilder builder = tracer.spanBuilder("spark.stage")
                     .setAttribute(SPARK_STAGE_ID, (long) stageId)
                     .setAttribute("spark.stage.attempt", (long) attempt)
+                    .setAttribute("spark.stage.label",
+                            "Stage " + stageId + " / attempt " + attempt)
                     .setStartTimestamp(epochMillis, TimeUnit.MILLISECONDS);
             Span app = application;
             builder = app == null
@@ -160,7 +180,7 @@ public final class TracePipeline implements TraceSink {
         runDriver(() -> {
             Span span = stages.remove(stageKey(stageId, attempt));
             if (span != null) endStageSafely(
-                    span, epochMillis, outcome, failure, taskMetrics);
+                    span, stageId, attempt, epochMillis, outcome, failure, taskMetrics);
         });
     }
 
@@ -283,6 +303,8 @@ public final class TracePipeline implements TraceSink {
 
     private static void endStageSafely(
             Span span,
+            int stageId,
+            int attempt,
             long epochMillis,
             String outcome,
             String failure,
@@ -307,6 +329,30 @@ public final class TracePipeline implements TraceSink {
                         taskMetrics.shuffleWriteBytes());
                 span.setAttribute(SPARK_STAGE_TASK_SHUFFLE_WRITE_TIME,
                         taskMetrics.shuffleWriteTimeNanos());
+                if (taskMetrics.timelineAvailable()) {
+                    span.setAttribute("spark.stage.label",
+                            "Stage " + stageId + " / attempt " + attempt
+                                    + " (tasks " + taskMetrics.includedTaskAttempts()
+                                    + "/" + taskMetrics.observedTaskAttempts() + ")");
+                    span.setAttribute(SPARK_STAGE_TASK_SCHEDULER_DELAY,
+                            taskMetrics.schedulerDelayMillis());
+                    span.setAttribute(SPARK_STAGE_TASK_EXECUTOR_DESERIALIZE_TIME,
+                            taskMetrics.executorDeserializeTimeMillis());
+                    span.setAttribute(SPARK_STAGE_TASK_SHUFFLE_READ_TIME,
+                            taskMetrics.shuffleReadTimeMillis());
+                    span.setAttribute(SPARK_STAGE_TASK_EXECUTOR_COMPUTING_TIME,
+                            taskMetrics.executorComputingTimeMillis());
+                    span.setAttribute(SPARK_STAGE_TASK_SHUFFLE_WRITE_TIME_MILLIS,
+                            taskMetrics.shuffleWriteTimeMillis());
+                    span.setAttribute(SPARK_STAGE_TASK_RESULT_SERIALIZATION_TIME,
+                            taskMetrics.resultSerializationTimeMillis());
+                    span.setAttribute(SPARK_STAGE_TASK_GETTING_RESULT_TIME,
+                            taskMetrics.gettingResultTimeMillis());
+                    span.setAttribute(SPARK_STAGE_TASK_TIMELINE_OBSERVED_ATTEMPTS,
+                            taskMetrics.observedTaskAttempts());
+                    span.setAttribute(SPARK_STAGE_TASK_TIMELINE_INCLUDED_ATTEMPTS,
+                            taskMetrics.includedTaskAttempts());
+                }
             });
         }
         endSafely(span, epochMillis, outcome, failure);
