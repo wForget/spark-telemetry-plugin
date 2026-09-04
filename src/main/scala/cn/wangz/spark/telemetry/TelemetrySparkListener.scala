@@ -81,11 +81,8 @@ private[telemetry] final class TelemetrySparkListener(sink: DeferredTelemetrySin
           adjustedExecutorRunTime - shuffleReadTime - shuffleWriteTime)
         timeline.foreach(_.add(
             schedulerDelay,
-            executorDeserializeTime,
-            shuffleReadTime,
             executorComputingTime,
             shuffleWriteTime,
-            resultSerializationTime,
             gettingResultTime))
       }
     } catch {
@@ -111,11 +108,11 @@ private[telemetry] final class TelemetrySparkListener(sink: DeferredTelemetrySin
           metrics.shuffleWriteMetrics.bytesWritten,
           metrics.shuffleWriteMetrics.writeTime,
           values.schedulerDelayMillis,
-          values.executorDeserializeTimeMillis,
-          values.shuffleReadTimeMillis,
+          nonNegative(metrics.executorDeserializeTime),
+          nonNegative(metrics.shuffleReadMetrics.fetchWaitTime),
           values.executorComputingTimeMillis,
           values.shuffleWriteTimeMillis,
-          values.resultSerializationTimeMillis,
+          nonNegative(metrics.resultSerializationTime),
           values.gettingResultTimeMillis,
           values.observedTaskAttempts,
           values.includedTaskAttempts)
@@ -143,11 +140,8 @@ private[telemetry] final class TelemetrySparkListener(sink: DeferredTelemetrySin
     var observedTaskAttempts = 0L
     var includedTaskAttempts = 0L
     var schedulerDelayMillis = 0L
-    var executorDeserializeTimeMillis = 0L
-    var shuffleReadTimeMillis = 0L
     var executorComputingTimeMillis = 0L
     var shuffleWriteTimeMillis = 0L
-    var resultSerializationTimeMillis = 0L
     var gettingResultTimeMillis = 0L
 
     def taskCount: Long = includedTaskAttempts
@@ -156,19 +150,13 @@ private[telemetry] final class TelemetrySparkListener(sink: DeferredTelemetrySin
 
     def add(
         schedulerDelay: Long,
-        executorDeserializeTime: Long,
-        shuffleReadTime: Long,
         executorComputingTime: Long,
         shuffleWriteTime: Long,
-        resultSerializationTime: Long,
         gettingResultTime: Long): Unit = {
       includedTaskAttempts += 1L
       schedulerDelayMillis += schedulerDelay
-      executorDeserializeTimeMillis += executorDeserializeTime
-      shuffleReadTimeMillis += shuffleReadTime
       executorComputingTimeMillis += executorComputingTime
       shuffleWriteTimeMillis += shuffleWriteTime
-      resultSerializationTimeMillis += resultSerializationTime
       gettingResultTimeMillis += gettingResultTime
     }
   }

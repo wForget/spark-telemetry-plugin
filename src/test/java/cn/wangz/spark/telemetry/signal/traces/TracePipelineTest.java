@@ -100,7 +100,7 @@ class TracePipelineTest {
 
         ReadableSpan ended = processor.lastEnded();
         assertEquals("spark.stage", ended.getName());
-        assertEquals("Stage 2 / attempt 1 (tasks 117/118)", ended.getAttribute(AttributeKey.stringKey(
+        assertEquals("Stage 2 / attempt 1 (TaskEnd 117/118)", ended.getAttribute(AttributeKey.stringKey(
                 "spark.stage.label")));
         assertEquals(Long.valueOf(101L), ended.getAttribute(AttributeKey.longKey(
                 "spark.stage.task_metrics.executor_run_time_ms")));

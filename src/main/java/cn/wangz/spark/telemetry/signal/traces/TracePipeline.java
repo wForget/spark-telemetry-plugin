@@ -332,7 +332,7 @@ public final class TracePipeline implements TraceSink {
                 if (taskMetrics.timelineAvailable()) {
                     span.setAttribute("spark.stage.label",
                             "Stage " + stageId + " / attempt " + attempt
-                                    + " (tasks " + taskMetrics.includedTaskAttempts()
+                                    + " (TaskEnd " + taskMetrics.includedTaskAttempts()
                                     + "/" + taskMetrics.observedTaskAttempts() + ")");
                     span.setAttribute(SPARK_STAGE_TASK_SCHEDULER_DELAY,
                             taskMetrics.schedulerDelayMillis());

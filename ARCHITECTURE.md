@@ -326,16 +326,21 @@ listener delivery and late task updates have asynchronous timing, the snapshot i
 accumulated cost rather than a transactionally frozen terminal total. If `taskMetrics` is
 unavailable, the attributes are omitted rather than reported as zero.
 
-For the Spark UI-style task-time breakdown, the Driver also observes completed task attempts before
-their stage completion. It calculates scheduler delay, task deserialization, shuffle fetch wait,
-executor computing, shuffle write, result serialization, and remote result retrieval per task,
-using the same clamping and per-task nanosecond-to-millisecond truncation as Spark's stage page,
-then accumulates those values by stage ID and attempt. The coherent millisecond fields live under
-`spark.stage.task_metrics.timeline.*`; observed and included task-attempt counts make partial
-coverage explicit. Task attempts without `TaskMetrics` do not contribute, and a stage with no
-included attempts omits the whole timeline group. These values represent cumulative task work, not
-ordered intervals or the stage critical path, and parallelism can make their sum exceed the stage
-span duration.
+For the Spark UI-style task-time breakdown, task deserialization, shuffle fetch wait, and result
+serialization come directly from the `StageInfo.taskMetrics` accumulator snapshot at stage
+completion. The Driver still observes completed task attempts to accumulate scheduler delay,
+executor computing, shuffle write, and remote result retrieval by stage ID and attempt. Those four
+segments require task timestamps, per-task clamping, or per-task nanosecond-to-millisecond
+truncation and cannot be reconstructed exactly from the stage snapshot. The millisecond fields live
+under `spark.stage.task_metrics.timeline.*`; observed and included task-attempt counts describe
+coverage of the four TaskEnd-derived segments only. A stage with no included attempts omits the
+whole timeline group, as does a stage whose `StageInfo.taskMetrics` snapshot is unavailable. The
+Stage span label prefixes the included/observed counts with `TaskEnd` so they are not mistaken for
+coverage of the three accumulator-derived segments. Because three segments use Spark's stage
+accumulator population while four use observed TaskEnd attempts, their contributing task sets can
+differ for failures, retries, or speculative execution. These values represent cumulative task
+work, not ordered intervals or the stage critical path, and parallelism can make their sum exceed
+the stage span duration.
 
 #### Structured Streaming
 
