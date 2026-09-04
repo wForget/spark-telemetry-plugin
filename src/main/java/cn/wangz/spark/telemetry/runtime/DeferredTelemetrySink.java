@@ -1,6 +1,7 @@
 package cn.wangz.spark.telemetry.runtime;
 
 import cn.wangz.spark.telemetry.signal.traces.TraceSink;
+import cn.wangz.spark.telemetry.signal.traces.StageTaskMetrics;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -73,8 +74,13 @@ public final class DeferredTelemetrySink {
     public void stageEnded(
             final int id, final int attempt, final long end,
             final String outcome, final String failure) {
+        stageEnded(id, attempt, end, outcome, failure, null);
+    }
+    public void stageEnded(
+            final int id, final int attempt, final long end,
+            final String outcome, final String failure, final StageTaskMetrics taskMetrics) {
         submit(new Event() { @Override public void apply(TraceSink traces) {
-            traces.stageEnded(id, attempt, end, outcome, failure);
+            traces.stageEnded(id, attempt, end, outcome, failure, taskMetrics);
         }});
     }
 

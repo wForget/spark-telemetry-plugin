@@ -1,6 +1,7 @@
 package cn.wangz.spark.telemetry
 
 import cn.wangz.spark.telemetry.runtime.DeferredTelemetrySink
+import cn.wangz.spark.telemetry.signal.traces.StageTaskMetrics
 import org.apache.spark.scheduler._
 
 private[telemetry] final class TelemetrySparkListener(sink: DeferredTelemetrySink)
@@ -35,11 +36,31 @@ private[telemetry] final class TelemetrySparkListener(sink: DeferredTelemetrySin
   override def onStageCompleted(event: SparkListenerStageCompleted): Unit = {
     val info = event.stageInfo
     val end = info.completionTime.getOrElse(System.currentTimeMillis())
+    val metrics = snapshotStageTaskMetrics(info)
     info.failureReason match {
       case Some(failure) =>
-        sink.stageEnded(info.stageId, info.attemptNumber(), end, "failure", failure)
+        sink.stageEnded(info.stageId, info.attemptNumber(), end, "failure", failure, metrics)
       case None =>
-        sink.stageEnded(info.stageId, info.attemptNumber(), end, "success", "")
+        sink.stageEnded(info.stageId, info.attemptNumber(), end, "success", "", metrics)
+    }
+  }
+
+  private def snapshotStageTaskMetrics(info: StageInfo): StageTaskMetrics = {
+    try {
+      val metrics = info.taskMetrics
+      if (metrics == null) null
+      else new StageTaskMetrics(
+        metrics.executorRunTime,
+        metrics.memoryBytesSpilled,
+        metrics.diskBytesSpilled,
+        metrics.inputMetrics.bytesRead,
+        metrics.outputMetrics.bytesWritten,
+        metrics.shuffleReadMetrics.totalBytesRead,
+        metrics.shuffleReadMetrics.fetchWaitTime,
+        metrics.shuffleWriteMetrics.bytesWritten,
+        metrics.shuffleWriteMetrics.writeTime)
+    } catch {
+      case _: RuntimeException | _: LinkageError => null
     }
   }
 }

@@ -21,6 +21,24 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public final class TracePipeline implements TraceSink {
     private static final AttributeKey<Long> SPARK_JOB_ID = AttributeKey.longKey("spark.job.id");
     private static final AttributeKey<Long> SPARK_STAGE_ID = AttributeKey.longKey("spark.stage.id");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_EXECUTOR_RUN_TIME =
+            AttributeKey.longKey("spark.stage.task_metrics.executor_run_time_ms");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_MEMORY_BYTES_SPILLED =
+            AttributeKey.longKey("spark.stage.task_metrics.memory_bytes_spilled");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_DISK_BYTES_SPILLED =
+            AttributeKey.longKey("spark.stage.task_metrics.disk_bytes_spilled");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_INPUT_BYTES_READ =
+            AttributeKey.longKey("spark.stage.task_metrics.input.bytes_read");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_OUTPUT_BYTES_WRITTEN =
+            AttributeKey.longKey("spark.stage.task_metrics.output.bytes_written");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_SHUFFLE_READ_BYTES =
+            AttributeKey.longKey("spark.stage.task_metrics.shuffle.read.total_bytes_read");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_SHUFFLE_FETCH_WAIT_TIME =
+            AttributeKey.longKey("spark.stage.task_metrics.shuffle.read.fetch_wait_time_ms");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_SHUFFLE_WRITE_BYTES =
+            AttributeKey.longKey("spark.stage.task_metrics.shuffle.write.bytes_written");
+    private static final AttributeKey<Long> SPARK_STAGE_TASK_SHUFFLE_WRITE_TIME =
+            AttributeKey.longKey("spark.stage.task_metrics.shuffle.write.write_time_ns");
     private static final AttributeKey<Long> SPARK_TASK_ATTEMPT_ID =
             AttributeKey.longKey("spark.task.attempt.id");
 
@@ -123,14 +141,26 @@ public final class TracePipeline implements TraceSink {
 
     @Override
     public void stageEnded(
+            int stageId,
+            int attempt,
+            long epochMillis,
+            String outcome,
+            String failure) {
+        stageEnded(stageId, attempt, epochMillis, outcome, failure, null);
+    }
+
+    @Override
+    public void stageEnded(
             final int stageId,
             final int attempt,
             final long epochMillis,
             final String outcome,
-            final String failure) {
+            final String failure,
+            final StageTaskMetrics taskMetrics) {
         runDriver(() -> {
             Span span = stages.remove(stageKey(stageId, attempt));
-            if (span != null) endSafely(span, epochMillis, outcome, failure);
+            if (span != null) endStageSafely(
+                    span, epochMillis, outcome, failure, taskMetrics);
         });
     }
 
@@ -249,6 +279,37 @@ public final class TracePipeline implements TraceSink {
 
     private static void endApplicationSafely(Span span, long epochMillis) {
         runSafely(() -> span.end(epochMillis, TimeUnit.MILLISECONDS));
+    }
+
+    private static void endStageSafely(
+            Span span,
+            long epochMillis,
+            String outcome,
+            String failure,
+            StageTaskMetrics taskMetrics) {
+        if (taskMetrics != null) {
+            runSafely(() -> {
+                span.setAttribute(SPARK_STAGE_TASK_EXECUTOR_RUN_TIME,
+                        taskMetrics.executorRunTimeMillis());
+                span.setAttribute(SPARK_STAGE_TASK_MEMORY_BYTES_SPILLED,
+                        taskMetrics.memoryBytesSpilled());
+                span.setAttribute(SPARK_STAGE_TASK_DISK_BYTES_SPILLED,
+                        taskMetrics.diskBytesSpilled());
+                span.setAttribute(SPARK_STAGE_TASK_INPUT_BYTES_READ,
+                        taskMetrics.inputBytesRead());
+                span.setAttribute(SPARK_STAGE_TASK_OUTPUT_BYTES_WRITTEN,
+                        taskMetrics.outputBytesWritten());
+                span.setAttribute(SPARK_STAGE_TASK_SHUFFLE_READ_BYTES,
+                        taskMetrics.shuffleReadBytes());
+                span.setAttribute(SPARK_STAGE_TASK_SHUFFLE_FETCH_WAIT_TIME,
+                        taskMetrics.shuffleFetchWaitTimeMillis());
+                span.setAttribute(SPARK_STAGE_TASK_SHUFFLE_WRITE_BYTES,
+                        taskMetrics.shuffleWriteBytes());
+                span.setAttribute(SPARK_STAGE_TASK_SHUFFLE_WRITE_TIME,
+                        taskMetrics.shuffleWriteTimeNanos());
+            });
+        }
+        endSafely(span, epochMillis, outcome, failure);
     }
 
     private static void endSafely(

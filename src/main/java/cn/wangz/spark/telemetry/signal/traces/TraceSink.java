@@ -18,6 +18,16 @@ public interface TraceSink {
 
     void stageEnded(int stageId, int attempt, long epochMillis, String outcome, String failure);
 
+    default void stageEnded(
+            int stageId,
+            int attempt,
+            long epochMillis,
+            String outcome,
+            String failure,
+            StageTaskMetrics taskMetrics) {
+        stageEnded(stageId, attempt, epochMillis, outcome, failure);
+    }
+
     TaskSpanHandle taskStarted(
             long taskAttemptId,
             int stageId,

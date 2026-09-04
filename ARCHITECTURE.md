@@ -315,6 +315,17 @@ Application span
 
 Spark stages form a DAG. When a stage has multiple causal dependencies, span links are preferred over fabricated parent-child relationships.
 
+When the Driver receives stage-attempt completion, it snapshots the accumulated
+`StageInfo.taskMetrics` that Spark exposes at that moment onto the `spark.stage` span. The fixed
+numeric attributes cover executor runtime, memory and disk spill, external input and output bytes,
+and shuffle read/write bytes and blocking time. Duration values retain their Spark units in explicit
+`_ms` or `_ns` attribute suffixes. These are sums across the task updates Spark accepted for that
+stage attempt, not stage wall-clock duration or exact committed business I/O. Failed, retried, or
+killed attempts may contribute, but not every failure reason provides accumulator updates. Because
+listener delivery and late task updates have asynchronous timing, the snapshot is an approximate
+accumulated cost rather than a transactionally frozen terminal total. If `taskMetrics` is
+unavailable, the attributes are omitted rather than reported as zero.
+
 #### Structured Streaming
 
 An unbounded streaming query must not produce a single unbounded trace. Each micro-batch creates a separate trace:

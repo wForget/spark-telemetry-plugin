@@ -3,6 +3,7 @@ package cn.wangz.spark.telemetry.runtime;
 import cn.wangz.spark.telemetry.signal.traces.TaskSpanHandle;
 import cn.wangz.spark.telemetry.signal.traces.TraceSink;
 import cn.wangz.spark.telemetry.signal.traces.TaskFailure;
+import cn.wangz.spark.telemetry.signal.traces.StageTaskMetrics;
 import org.apache.spark.telemetry.config.TelemetryConfig;
 import org.junit.jupiter.api.Test;
 
@@ -19,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DeferredTelemetrySinkTest {
@@ -33,13 +35,16 @@ class DeferredTelemetrySinkTest {
 
         RecordingTraceSink traces = new RecordingTraceSink();
         sink.bind(traces);
-        sink.stageEnded(2, 0, 21L, "success", "");
+        StageTaskMetrics metrics = new StageTaskMetrics(
+                101L, 102L, 103L, 104L, 105L, 106L, 107L, 108L, 109L);
+        sink.stageEnded(2, 0, 21L, "success", "", metrics);
 
         assertEquals(Arrays.asList(
                 "job-start:1:[2]",
                 "stage-start:2:0",
                 "job-end:1:success",
-                "stage-end:2:0:success"), traces.events());
+                "stage-end:2:0:success:101"), traces.events());
+        assertSame(metrics, traces.lastStageTaskMetrics());
 
         sink.close();
         sink.applicationEnded(30L);
@@ -105,6 +110,7 @@ class DeferredTelemetrySinkTest {
         private final List<String> events = Collections.synchronizedList(new ArrayList<String>());
         private final CountDownLatch applyingBootstrap;
         private final CountDownLatch continueBinding;
+        private StageTaskMetrics lastStageTaskMetrics;
 
         private RecordingTraceSink() {
             this(null, null);
@@ -146,8 +152,24 @@ class DeferredTelemetrySinkTest {
         }
 
         @Override public void stageEnded(
-                int stageId, int attempt, long epochMillis, String outcome, String failure) {
-            events.add("stage-end:" + stageId + ":" + attempt + ":" + outcome);
+                int stageId,
+                int attempt,
+                long epochMillis,
+                String outcome,
+                String failure) {
+            events.add("stage-end:" + stageId + ":" + attempt + ":" + outcome + ":none");
+        }
+
+        @Override public void stageEnded(
+                int stageId,
+                int attempt,
+                long epochMillis,
+                String outcome,
+                String failure,
+                StageTaskMetrics taskMetrics) {
+            lastStageTaskMetrics = taskMetrics;
+            events.add("stage-end:" + stageId + ":" + attempt + ":" + outcome + ":"
+                    + taskMetrics.executorRunTimeMillis());
         }
 
         @Override public TaskSpanHandle taskStarted(
@@ -174,5 +196,7 @@ class DeferredTelemetrySinkTest {
                 return new ArrayList<String>(events);
             }
         }
+
+        private StageTaskMetrics lastStageTaskMetrics() { return lastStageTaskMetrics; }
     }
 }

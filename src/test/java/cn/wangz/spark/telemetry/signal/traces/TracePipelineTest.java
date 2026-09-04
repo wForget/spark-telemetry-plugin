@@ -87,6 +87,72 @@ class TracePipelineTest {
     }
 
     @Test
+    void stageSpanRecordsAccumulatedTaskMetrics() {
+        CountingSpanProcessor processor = new CountingSpanProcessor();
+        SdkTracerProvider provider = provider(processor);
+        TracePipeline traces = new TracePipeline(provider.get("test"), true);
+        StageTaskMetrics metrics = new StageTaskMetrics(
+                101L, 102L, 103L, 104L, 105L, 106L, 107L, 108L, 109L);
+
+        traces.stageStarted(2, 1, 3L);
+        traces.stageEnded(2, 1, 13L, "success", "", metrics);
+
+        ReadableSpan ended = processor.lastEnded();
+        assertEquals("spark.stage", ended.getName());
+        assertEquals(Long.valueOf(101L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.executor_run_time_ms")));
+        assertEquals(Long.valueOf(102L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.memory_bytes_spilled")));
+        assertEquals(Long.valueOf(103L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.disk_bytes_spilled")));
+        assertEquals(Long.valueOf(104L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.input.bytes_read")));
+        assertEquals(Long.valueOf(105L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.output.bytes_written")));
+        assertEquals(Long.valueOf(106L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.shuffle.read.total_bytes_read")));
+        assertEquals(Long.valueOf(107L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.shuffle.read.fetch_wait_time_ms")));
+        assertEquals(Long.valueOf(108L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.shuffle.write.bytes_written")));
+        assertEquals(Long.valueOf(109L), ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.shuffle.write.write_time_ns")));
+        provider.shutdown().join(1, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void stageSpanOmitsTaskMetricsWhenUnavailable() {
+        CountingSpanProcessor processor = new CountingSpanProcessor();
+        SdkTracerProvider provider = provider(processor);
+        TracePipeline traces = new TracePipeline(provider.get("test"), true);
+
+        traces.stageStarted(2, 1, 3L);
+        traces.stageEnded(2, 1, 13L, "success", "", null);
+
+        ReadableSpan ended = processor.lastEnded();
+        assertEquals("spark.stage", ended.getName());
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.executor_run_time_ms")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.memory_bytes_spilled")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.disk_bytes_spilled")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.input.bytes_read")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.output.bytes_written")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.shuffle.read.total_bytes_read")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.shuffle.read.fetch_wait_time_ms")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.shuffle.write.bytes_written")));
+        assertNull(ended.getAttribute(AttributeKey.longKey(
+                "spark.stage.task_metrics.shuffle.write.write_time_ns")));
+        provider.shutdown().join(1, TimeUnit.SECONDS);
+    }
+
+    @Test
     void taskSpanRecordsSlowClassification() {
         CountingSpanProcessor processor = new CountingSpanProcessor();
         SdkTracerProvider provider = provider(processor);
